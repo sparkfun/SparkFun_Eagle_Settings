@@ -1,2 +1,3 @@
-SparkFun_Eagle_Settings
+SparkFun Eagle Settings
 =======================
+Eagle CAM and DRU configuration files for SparkFun board design.
