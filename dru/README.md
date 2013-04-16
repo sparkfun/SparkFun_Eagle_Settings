@@ -1,0 +1,3 @@
+DRU files
+=======================
+These are the design rules files (.dru), which define the tollerances on the PCB (this includes everything from trace width to layer construction). The PCB fab house can only manufacture up to a specific tollerance and this file makes sure you fall within their constraints. The 2-layer and 4-layer dru files are based on the [BatchPCB](https://batchpcb.com/faq#question_2) design constraints. 
