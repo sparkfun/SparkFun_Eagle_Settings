@@ -1,0 +1,101 @@
+# Configuration Script
+#
+# This file can be used to configure the editor windows.
+
+Assign F3 'Delete';
+Assign F4 'Name';
+Assign F5 'Value';
+Assign F6 'Smash';
+Assign F7 'Move';
+Assign AF7 'Group';
+Assign F8 'Copy';
+Assign AF3 'Grid inch 0.001 on; Grid alt inch 0.01;';
+Assign AF10 'Grid mm 1 on; Grid alt mm 0.1;';
+
+Grid inch 0.05 on;
+Grid alt inch 0.005;
+
+BRD:
+#Menu Add Change Copy Delete Display Grid Group Move Name Quit Rect \
+#     Route Script Show Signal Split Text Value Via Window ';'  Wire Write Edit;
+
+#Get rid of the extra internal layers
+#Layer -2 -3 -4 -5 -6 -7 -8 -9 -10 -11 -12 -13 -14 -15
+
+#Setup SparkFun Defaults
+Grid inch 0.05 on;
+Grid alt inch 0.005;
+Set WIRE_BEND 1; #Route with 45 degree angles
+Set Drill 0.02; #Make vias 0.02"
+Change Shape Round; #Make vias round
+Change Width 0.01; #Routing width default to 10mil
+
+Change Font Vector; #Make text on board in vector font
+Change Ratio 15;
+
+#changes background color of board to black
+SET PALETTE BLACK;
+
+#Layer colors
+Set palette 16 0xFFFFFFFF; #Super white
+Set palette 24 0xFFC0C0C0; #Grey - color used when text is selected (anti palette location 16)
+Set color_layer 21 16; #Set tPlace to white
+Set color_layer 22 14; #Set bPlace to yellow
+Set color_layer 51 6; #Set tDocu to mellow yellow
+display none; display 1 16 17 18 19 20 21 22 23 24 45 49 51; display -25 -26 -27 -28;
+
+#Assing shortcuts
+Assign F8 ratsnest;
+Assign AF8 drc;
+
+Assign F9 'Route';
+Assign AF9 'Ripup';
+
+Assign F11 'display none; display 1 16 17 18 19 20 21 22 23 24 45 49 51; display -25 -26 -27 -28;';
+Assign AF11 'display none; display 17 20 21 23 27 31 45 51; display -25 -26 -28;';
+
+Assign F12 'show';
+Assign AF12 'info';
+
+Assign F10 'Grid inch 0.05 on; Grid alt inch 0.005;';
+Assign AF10 'Grid mm 1 on; Grid alt mm 0.1;';
+
+SCH:
+Assign F9 'Net';
+Assign AF9 'Label';
+Grid Default;
+Change Width 0.008;
+
+#Menu Add Bus Change Copy Delete Display Gateswap Grid Group Invoke Junction \
+#     Label Move Name Net Pinswap Quit Script Show Split Value Window ';' \
+#     Wire Write Edit;
+
+LBR:
+
+#Menu Close Export Open Script Write ';' Edit;
+
+Assign F10 'Grid inch 0.05 on; Grid alt inch 0.005;';
+Assign AF10 'Grid mm 1 on; Grid alt mm 0.1;';
+Grid mm 1 on;
+Grid alt mm 0.1;
+
+DEV:
+
+Grid Default;
+#Menu Add Change Copy Connect Delete Display Export Grid Move Name Package \
+#     Prefix Quit Script Show Value Window ';' Write Edit;
+
+SYM:
+
+Grid Default On;
+Change Width 0.010;
+#Menu Arc Change Copy Cut Delete Display Export Grid Group Move Name Paste \
+#     Pin Quit Script Show Split Text Value Window ';' Wire Write Edit;
+
+PAC:
+
+Grid Default On;
+Change Width 0.005;
+Change Size 0.050;
+#Menu Add Change Copy Delete Display Grid Group Move Name Pad Quit \
+#     Script Show Smd Split Text Window ';' Wire Write Edit;
