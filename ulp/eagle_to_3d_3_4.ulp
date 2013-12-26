@@ -1,0 +1,2448 @@
+#usage "<b>Generate IDF files and interface to SimplifiedSolutionsinc.com to generate 3D model.</b><p>\n"
+       "Generates the EMN and EMP IDF files from the board.<BR>"
+	   "IDF files are then submitted to SimplifiedSolutionsinc.com<br/>"
+	   "and a 3D assembly model is generated. On the SimplifiedSolutionsinc.com<BR/>"
+	   "site mappings are executed from the board elements to fully rendered<BR>"
+	   "3D models. The site then responses with a thumbnail and several free and<br/>"
+	   "purchase options.<BR>"
+	   "Version: 1.0 - Initial Release - 4-30-12<br/>"
+	   "Version: 1.1 - Includes banner and dynamic library logic - 5-5-12<br/>"
+	   "Version: 1.2 - Includes fix for board outline loop order and improved logic for component outlines - 5-9-12<br/>"
+	   "Version: 1.3 - Includes fix for zero value max/min x/y values on component outlines - 5-10-12<br/>"
+	   "Version: 1.4 - Includes fix for missing holes - 5-12-12<br/>"
+	   "Version: 1.5 - Modified banner url for dynamic version based message. Fix in board outline for lines linked end to end vs end to start. Updated text in UI. - 5-13-12<br/>"
+	   "Version: 1.6 - Fix for component outlines where max/min values are equal resulting in failures in Proe - 5-14-12<br/>"
+	   "Version: 1.7 - Enabled purchase links to pcb-pool site. Include UI customizations for Windows and Mac.  - 5-14-12<br/>"
+	   "Version: 1.8 - Updated links shown after build completed. - 6-21-12<br/>"
+	   "Version: 1.9 - UI updates based on feedback. Added in third link to enable user to continue working on board. - 7-1-12<br/>"
+	   "Version: 2.0 - UI fixes for Mac/Linux - 7-2-12<br/>"
+	   "Version: 2.1 - Updated UI on page. - 7-8-12<br/>"
+	   "Version: 2.2 - Improved board outline algorithm. - 7-10-12<br/>"
+	   "Version: 2.3 - Changed port number to 8080. 9-17-12<br/>"
+	   "Version: 2.3b - Fix for space in generation of .placement section values. - 7-30-12<br/>"
+	   "Version: 3.0 - Improvements to handling of outline defects and swap package/value in writing to IDF files. Fixed issue with unique alname/ecad outlines in emp. Includes logic to handle boards with circle outline. - 9-13-12<br/>"
+	   "Version: 3.1 - Changed over ports to 80. - 11-6-12<br/>"
+	   "Version: 3.2 - Changing wording on fatal defect dialog - 11-23-12<br/>"
+	   "Version: 3.3 - Add help and video links - 12-1-12<br/>"
+	   "Version: 3.4 - Changed all links to SSI to use https - 12-9-12<br/>"
+	   "</p>"
+       "<author>Author: support@simplifiedsolutionsinc.com</author>"
+
+#require 5.1000
+string version = "3.4";  //ulp version
+
+//vars used for the text dialog
+string textMessageDialog;  //used to store text shown to user
+string textMessageHeader = "<h1>Welcome to the EAGLE-to-3D Tool</h1>";
+string textDisclaimer = "The 3D component libraries supplied by Simplified Solutions have been compiled with great care. However, with the large number of 3D models available and the occasional package changes made by suppliers, an occasional discrepancy is unavoidable. Please note, therefore, that Simplified Solutions and Beta LAYOUT takes no responsibility for the complete accuracy of information included in the 3D library components.  Please verify all 3D PCB STEP file geometry prior to using the data in product designs.  By choosing the \"Generate 3D Data\" button you are also agreeing to our <a href=\"http://www.simplifiedsolutionsinc.com/copy/terms_of_service.html\">Terms of Service</a>";
+
+
+//web request urls
+string host = "https://www.simplifiedsolutionsinc.com";
+//string service_port = "8080";
+string service_port = "80";
+string static_port = "80";
+string service_name = "EMN-EMPAdvancedApp/EagleTo3DServlet";
+string static_name = "EagleTo3D/";
+string service_url = host + "/" + service_name;
+string static_url = host + "/" + static_name;
+
+//string service_url = host + ":" + service_port + "/" + service_name;
+//string static_url = host + ":" + static_port + "/" + static_name;
+
+string libraries[];  //used to hold libraries from web
+string packageOutlines[];  //used to hold outlines of packages
+int packageCounter = 0;  //keeps track of how many entries in packages outline array
+
+
+//html used in the UI
+string tagImgActive = "<img src=\""+ service_url + "/images/ajax-loader.gif\" size=\"50\">";
+string tagBanner = "";    //Initial value. Once its retrieved first time it will have actual data.
+
+//debug flags
+int debug = 0;   //general debug flag
+int debugIDFFile = 1;   //debug to write out local idf files
+int debugIDFHtml = 0;    //debug to write out local idf files in html format
+
+//-----------------------------------------------------------------------------
+// dictionary
+//-----------------------------------------------------------------------------
+string Dictionary[] = {
+						  "en\v"
+						  "de\v",
+						  "English message 1 here. \v"
+						  "German message 1 here. \v",
+						  "English message 2 here. \v"
+						  "German message 3 here. \v"
+						};
+
+string DlgLang = language();
+if (DlgLang != "de") DlgLang = "en";   //force to en if not german
+int LangIdx = strstr(Dictionary[0], DlgLang) / 3;  //language index
+
+///// Translate, based on dictionary
+string tr(string s) {
+	string t = lookup(Dictionary, s, LangIdx, '\v');
+	return t ? t : s;
+	}
+
+
+
+//-----------------------------------------------------------------------------
+// subroutines
+//-----------------------------------------------------------------------------
+
+string itos( int num ){
+	string temp;
+
+	sprintf( temp, "%d", num );
+
+	return temp;
+	}
+
+string rtos( real num  ){
+	string temp;
+
+	sprintf( temp, "%f", num );
+
+	return temp;
+	}
+
+int compareReals( real n1, real n2 ){
+	string n1s;
+	string n2s;
+
+	sprintf( n1s, "%1.2f", n1 );
+	sprintf( n2s, "%1.2f", n2 );
+
+	if( n1s == n2s ){
+		return 1;
+		}
+	else{
+		return 0;
+		}
+	}
+
+string getBoardThickness(){
+
+	int unitsInt;
+	string thickness;
+
+	/* removed to force board to mm
+	board(B) {
+		unitsInt = B.grid.unit;
+		}
+
+	switch( unitsInt ){
+		case 0: 
+			thickness = "1.6";
+			break;
+		case 1: 
+			thickness = "1.6";
+			break;
+		case 2: 
+			thickness = "1.6";
+			break;
+		case 3: 
+			thickness = "1.6";
+			break;
+
+		}  //end switch
+	*/
+
+	thickness = "1.6";
+
+	return thickness;
+	}  //end func
+
+string getBoardUnits(){
+
+	/*
+		GRID_UNIT_MIC microns
+		GRID_UNIT_MM millimeter
+		GRID_UNIT_MIL mil
+		GRID_UNIT_INCH inch
+		*/
+
+	/* force to mm
+	string unitsMap[] = { "MIC", "MM", "MIL", "IN" };
+
+	board(B) {
+		return unitsMap[ B.grid.unit ];
+		}
+	*/
+	
+	return "MM";
+	}
+
+
+real backConvertDimensions( real mmDim ){
+	real boardDim;
+	int unitsInt;
+
+	//get board dimensions
+	board(B) {
+		unitsInt = B.grid.unit;
+		}
+
+	/*
+	GRID_UNIT_MIC microns
+	GRID_UNIT_MM millimeter
+	GRID_UNIT_MIL mil
+	GRID_UNIT_INCH inch
+	*/
+
+	switch( unitsInt ){
+		case 0: 
+			//micron
+			boardDim = mmDim * 1000;
+			break;
+		case 1: 
+			//mm
+			boardDim = mmDim;
+			break;
+		case 2: 
+			//mil
+			boardDim = mmDim * 39.3700787;
+			break;
+		case 3: 
+			//inch
+			boardDim = mmDim * 0.0393701;
+			break;
+
+		}  //end switch
+
+		//string unitsMap[] = { "MIC", "MM", "MIL", "IN" };
+
+		//dlgMessageBox( "MM:" + rtos( mmDim ) + ", " + unitsMap[ unitsInt ] + ": " + rtos( boardDim ) );
+
+		return boardDim;
+
+	}  //end func
+
+real getDimInBoardUnits( int dim ){
+	int unitsInt;
+	real convDim;
+
+	/* removed for force to mm
+	board(B) {
+		unitsInt = B.grid.unit;
+		}
+
+	switch( unitsInt ){
+		case 0: 
+			convDim = u2mic( dim );
+			break;
+		case 1: 
+			convDim = u2mm( dim );
+			break;
+		case 2: 
+			convDim = u2mil( dim );
+			break;
+		case 3: 
+			convDim = u2inch( dim );
+			break;
+
+		}  //end switch
+	*/
+
+	convDim = u2mm( dim );
+
+	return convDim;
+	}  //end func
+
+
+real getTolerance(){
+	int unitsInt;
+	real tolerance;
+
+	/* removed to force to mm
+	board(B) {
+		unitsInt = B.grid.unit;
+		}
+
+	switch( unitsInt ){
+		case 0: 
+			tolerance = 100;
+			break;
+		case 1: 
+			tolerance = 0.05;
+			break;
+		case 2: 
+			tolerance = 3.9;
+			break;
+		case 3: 
+			tolerance = 0.004;
+			break;
+
+		}  //end switch
+	*/
+
+	tolerance = 0.05;
+
+	return tolerance;
+	}  //end func
+
+
+string getBoardFilename(){
+	board( BRD ){
+		return filename( BRD.name );
+		}  //end board
+	}
+
+
+string getBoardDir(){
+
+	board( BRD ){
+		return filedir( BRD.name );
+		}  //end board
+	}
+
+string getBoardPath(){
+
+	return getBoardDir() + getBoardFilename();
+
+	}
+
+int isWindows() {
+	//Returns 1, if EAGLE is running under Windows (0 for Linux/Mac)
+	if ((strsub(argv[0],0,1)=="/") && (strsub(argv[0],0,2)!="//"))
+		return 0;
+
+	return 1;
+	}  //end sub
+
+//count number of times a char shows up in a string.
+int countOccurancesOfChar( string strToScan, char toMatch ){
+	int count = 0;
+
+
+	for (int i = 0; strToScan[i]; ++i) {
+		if( strToScan[i] == toMatch ){
+			count++;
+			}  //end if
+		}  //end for
+
+	return count;
+
+	}  //end sub
+
+// Removes carriage returns from a string and replaces with <BR/>
+string removeCarriageReturns( string dirtyString ){
+
+	string cleanedString;
+
+	for (int i = 0; dirtyString[i]; ++i) {
+		if( dirtyString[i] == '\n' ){
+			cleanedString += "<BR/>";
+			}
+		else{
+			cleanedString += dirtyString[i];
+			}  //end if-else
+		}  //end for
+
+	return cleanedString;
+	}  //end sub
+
+// Removes spaces in string and replaces with <S/>
+string removeSpaces( string dirtyString ){
+
+	string cleanedString;
+
+	for (int i = 0; dirtyString[i]; ++i) {
+		if( dirtyString[i] == ' ' ){
+			cleanedString += "<S/>";
+			}
+		else{
+			cleanedString += dirtyString[i];
+			}  //end if-else
+		}  //end for
+
+	return cleanedString;
+	}  //end sub
+
+// Removes spaces in string and replaces with <S/>
+string replaceSpaceWithUnderscore( string dirtyString ){
+
+	string cleanedString;
+
+	for (int i = 0; dirtyString[i]; ++i) {
+		if( dirtyString[i] == ' ' ){
+			cleanedString += "_";
+			}
+		else{
+			cleanedString += dirtyString[i];
+			}  //end if-else
+		}  //end for
+
+	return cleanedString;
+	}  //end sub
+
+// Reads in file and converts it to be used in a html form submit
+string parseFileToHtmlForm( string filePath ){
+
+	string fileContents;
+
+	int in = fileread( fileContents, filePath );
+
+	fileContents = removeCarriageReturns( fileContents );
+
+	fileContents = removeSpaces( fileContents );
+
+	//dlgMessageBox( "File input value:" + in );
+
+	return fileContents;
+	}  //end sub
+
+
+string parseStringToHtmlForm( string input ){
+
+	return removeSpaces( removeCarriageReturns( input ) );
+
+	}  //end sub
+
+
+//this function is used to get the html to show in the UI. it uses a fixed header and footer and the call sets the body.
+string getHtmlText( string body ){
+
+	string os;
+
+	//detect if windows or other
+	if( isWindows() ){
+		os = "Windows";
+		}
+	else{
+		os = "Mac/Linux";
+		}
+	
+	string htmlHeader = "<hr size=1>" + textMessageHeader + "<hr size=1> \
+							<table border=0 width=\"100%\" height=\"100%\"> \
+								<tr> \
+									<td width=\"100%\">";
+
+	string htmlFooter = "</td>";
+
+	htmlFooter += "<td>";
+
+	//build window based on OS
+	if( isWindows() ){
+		htmlFooter += "<br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/></td>";
+		}
+	else{
+		htmlFooter += "<br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/></td>";
+		}  //end if-else
+	
+	
+	htmlFooter += "</tr></table>";
+	htmlFooter += "<hr size=1>";
+	htmlFooter += "<table border=0 width=\"100%\" height=\"100%\"> \
+					<tr> \
+						<td align=left colspan=2>Help -  <a href=\"http://www.youtube.com/watch?v=rO96K5xgd50&feature=youtu.be\">Video: Mapping Components to 3D</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href=\"https://www.simplifiedsolutionsinc.com/EagleTo3D/EAGLE-TO-3D-Best-Practices.pdf\">Best Practices</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href=\"mailto:support@simplifiedsolutionsinc.com\">Contact Us</a></td> \
+					</tr> \
+					<tr> \
+						<td align=left colspan=2></td> \
+					</tr> \
+					<tr> \
+						<td align=left width=\"65%\">EAGLE-to-3D is a product of <a href=\"https://www.simplifiedsolutionsinc.com\">Simplified Solutions Inc.</a> and <a href=\"www.beta-layout.com\">Beta LAYOUT</a></td> \
+						<td align=right>( ULP Version: " + version + "\t, OS: " + os + " )</td> \
+					</tr> \
+					<tr> \
+						<td colspan=2><hr size=1></td> \
+					</tr> \
+					<tr> \
+						<td colspan=2><font size=-1>" + textDisclaimer + "</font><td> \
+					</tr> \
+					</table><br/>";
+
+	
+
+	return htmlHeader + body + htmlFooter;
+	}  //end sub
+
+//general function to do url get
+string getWebFile( string url_path ){
+
+	return "";
+	}
+
+//this sub is used to get the Html banner to show on the UI. It should only need to be called once on first call
+void loadBanner(){
+	
+	string banner;
+
+	//do netget
+	if( netget( banner, static_url + "eagle_banner.php?ulp_version=" + version + "&lang=" + language() ) ){
+
+		if( debug ){
+			dlgMessageBox( banner );
+			}  //end if
+
+		tagBanner = banner;
+
+		}
+	else{
+		tagBanner = "Not retrieved";
+		}  //end if-else
+
+	}  //end sub
+
+
+void loadTerms(){
+	
+	string term;
+
+	//do netget
+	if( netget( term, static_url + "terms.html" ) ){
+
+		if( debug ){
+			dlgMessageBox( term );
+			}  //end if
+
+		//tagBanner = banner;
+
+		}
+	else{
+		//tagBanner = "Not retrieved";
+		}  //end if-else
+
+	}  //end sub
+
+
+void loadLibraries(){
+
+	//string libraries[];
+	string libResponse;
+	int libraryCount = 0;
+
+	//string defaultLib[] = { "RCL", "RESISTOR" };
+
+	//do netget
+	if( netget( libResponse, static_url + "eagle_libraries.txt" ) ){
+
+		if( debug ){
+			dlgMessageBox( libResponse );
+			}  //end if
+
+		//load library string in to libraries array
+		libraryCount = strsplit( libraries, libResponse, ':');
+
+		}  //end if
+	
+	//in case some issue load RCL and RESISTOR as default
+	if( libraryCount == 0 ){
+		libraries[0] = "RCL";
+		libraries[1] = "RESISTOR";
+		}  //end if
+
+	}  //end sub
+
+
+real getDistBetweenPts( real x1, real y1, real x2, real y2 ){
+	//dist = sqrt( ( x2 - x1 )^2 + ( y2 - y1 )^2 )
+
+	return sqrt( pow( ( x2 - x1 ), 2 ) + pow( ( y2 - y1 ), 2 ) );
+
+	}  //end sub
+
+void writeToFile( string filePath, string fileContents ){
+
+	output( filePath, "wt" ){
+		printf( fileContents );
+		}
+	}
+
+//-----------------------------------------------------------------------------
+// emp subroutines
+//-----------------------------------------------------------------------------
+
+
+string getDateTime(){
+
+	//time for date.time in header
+	int now = time();
+	string dateStr;
+
+	sprintf( dateStr, "%d/%02d/%02d.%02d:%02d:%02d", t2year(now), t2month(now), t2day(now), t2hour(now), t2minute(now), t2second(now) );
+
+	return dateStr;
+
+	}  //end sub
+
+//used to detect if outline should be closed by checking if point is within tolerance/radius of first point
+int closeOutline( real bx1, real by1, real firstX, real firstY, real radius ){
+
+	string temp;
+
+	//debug
+	if( debug ){
+		real xCalc = pow( ( bx1 - firstX ), 2 );
+		real yCalc = pow( ( by1 - firstY ), 2 );
+		real radCalc = pow( radius, 2 );
+
+		sprintf( temp, "%f + %f < %f", xCalc, yCalc, radCalc );
+
+		dlgMessageBox( temp );
+		}
+
+	//(x-center_x)^2 + (y - center_y)^2 < radius^2
+	if( ( pow( ( bx1 - firstX ), 2 ) + pow( ( by1 - firstY ), 2 ) ) < pow( radius, 2 ) ){
+		return 1;
+		}
+	else{
+		return 0;
+		}
+
+	}  //end sub
+
+//looks up package outline and generates text for .electical section entry
+string getComponentOutline( string footprint, string altname, string packageName, string units ){
+
+	//package array = [ { packname1, maxX, maxY, minX, minY },
+	//					 { packname2, maxX, maxY, minX, minY }
+	//					]
+
+	//board->Library->Package->Wires
+
+	int foundPackage = 0;
+
+	//lookup package name in array
+	string packageNameLookup = lookup( packageOutlines, packageName, 0 );
+
+	//check if found in lookup. if not then generate and put in array
+	if( packageNameLookup == "" ){
+		//if package not in lookup then generate it
+
+		//init max/min values
+		real maxX = 0, maxY = 0, minX = 0, minY;
+
+		//loop thru all libraries to find packagename
+		board(B) {
+
+			//go into library
+			B.libraries(LBR) {
+
+				//loop thru packages in library
+				LBR.packages(P){
+
+					if( P.name == packageName ){
+						
+						//set found package flag
+						foundPackage = 1; 
+
+						
+						
+						//used to capture first loop of data
+						int loopCounter = 0;  
+
+						//loop thru wires and get max/min x/y
+						P.wires(W){
+							//get first data point
+							if( loopCounter == 0 ){
+								maxX = getDimInBoardUnits(W.x1);
+								minX = getDimInBoardUnits(W.x1);
+
+								maxY = getDimInBoardUnits(W.y1);
+								minY = getDimInBoardUnits(W.y1);
+								}
+
+							if (W.arc) {
+								//skip arcs for now
+								}
+							else {
+								//max/min checks
+								if( getDimInBoardUnits(W.x1) <= minX ){
+									minX = getDimInBoardUnits(W.x1);
+									}
+
+								if( getDimInBoardUnits(W.x1) >= maxX ){
+									maxX = getDimInBoardUnits(W.x1);
+									}
+
+								if( getDimInBoardUnits(W.y1) <= minY ){
+									minY = getDimInBoardUnits(W.y1);
+									}
+
+								if( getDimInBoardUnits(W.y1) >= maxY ){
+									maxY = getDimInBoardUnits(W.y1);
+									}
+								}  //end if-else
+
+							loopCounter++;
+							}  //end wires
+
+						//break out of loop since match found
+						break;
+
+						}  //end if for package name match
+					} //end packages loop
+				}  //end libraries loop
+			}  //end board loop
+
+
+		//make sure found match. if not then put in default values
+		string temp;
+
+		if( foundPackage ){
+			//load to array
+			sprintf( temp, "%s\t%f\t%f\t%f\t%f", packageName, maxX, maxY, minX, minY );
+			}
+		else{
+			sprintf( temp, "%s\t%f\t%f\t%f\t%f", packageName, maxX, maxY, minX, minY );
+			}  //end if-else for found package check
+
+		packageOutlines[ packageCounter ] = temp;
+
+		packageCounter++;
+
+		}  //end if for lookup check
+
+
+	//generate outline data
+	string outline = footprint + " " + altname + " " + units;
+
+	//set default height based on units
+	if( units == "MM" ){
+		outline += " 1.00\n";
+		}
+	else if( units == "THOU" ){
+		outline += " 39.37\n";
+		}
+	else{
+		//treat as MM
+		outline += " 1.00\n";
+		}  //end if-else
+
+	//map in max/min data
+	string maxX = lookup( packageOutlines, packageName, 1 );
+	string maxY = lookup( packageOutlines, packageName, 2 );
+
+	string minX = lookup( packageOutlines, packageName, 3 );
+	string minY = lookup( packageOutlines, packageName, 4 );
+
+	/*rectangle based on max/min values. start in upper left and move clockwise
+	0   minX   maxY
+	0   maxX   maxY
+	0   maxX   minY
+	0   minX   minY
+	0   minX   maxY
+	*/
+
+	//if max/min are all zeros then put in 1x1 block
+	if( maxX == "0.000000" && maxY == "0.000000" && minX == "0.000000" && minX == "0.000000" ){
+		outline += "0     1.00  -1.00 0.0\n" +
+					"0     -1.00 -1.00 0.0\n" +
+					"0     -1.00 1.00 0.0\n" +
+					"0     1.00 1.00 0.0\n" +
+					"0     1.00 -1.00 0.0\n";
+		}
+	else if( maxX == minX || maxY == minY ){
+		outline += "0     1.00  -1.00 0.0\n" +
+					"0     -1.00 -1.00 0.0\n" +
+					"0     -1.00 1.00 0.0\n" +
+					"0     1.00 1.00 0.0\n" +
+					"0     1.00 -1.00 0.0\n";
+		}
+	else{
+		outline += "0   " +  minX + "   " + maxY + "   0.0\n" +
+				"0   " +  maxX + "   " + maxY + "   0.0\n" + 
+				"0   " +  maxX + "   " + minY + "   0.0\n" + 
+				"0   " +  minX + "   " + minY + "   0.0\n" + 
+				"0   " +  minX + "   " + maxY + "   0.0\n";
+		}   //end if-else
+
+	return outline;
+
+	}  //end sub
+
+//gets the dummy component outlines for emp file based on units.
+string getComponentOutlineDummy( string footprint, string altname, string units ){
+
+	string outline = footprint + " " + altname + " " + units;
+
+	if( units == "MM" ){
+		outline += " 1.00\n" +
+					"0     1.00  -1.00 0.0\n" +
+					"0     -1.00 -1.00 0.0\n" +
+					"0     -1.00 1.00 0.0\n" +
+					"0     1.00 1.00 0.0\n" +
+					"0     1.00 -1.00 0.0\n";
+		}
+	else if( units == "THOU" ){
+		outline += " 39.37\n" +
+					"0     39.37       -39.37      0.0\n" + 
+					"0     -39.37      -39.37      0.0\n" + 
+					"0     -39.37      39.37       0.0\n" + 
+					"0     39.37       39.37       0.0\n" + 
+					"0     39.37       -39.37      0.0\n";
+		}
+	else{
+		//treat as MM
+		outline += " 1.00\n" +
+					"0     1.00  -1.00 0.0\n" +
+					"0     -1.00 -1.00 0.0\n" +
+					"0     -1.00 1.00 0.0\n" +
+					"0     1.00 1.00 0.0\n" +
+					"0     1.00 -1.00 0.0\n";
+
+		}  //end if-else
+
+	return outline;
+
+	}  //end sub
+
+string getEmpHeader(){
+	/*
+	.HEADER
+	LIBRARY_FILE 3.0 "Commend International >generate_3d_data_v10-5_MJB.ulp V0.9<" 2012/03/21.12:23:09 1
+	.END_HEADER
+	*/
+
+	return ".HEADER\n" +
+			"LIBRARY_FILE 3.0 \"Eagle to 3D Version " + version + "\" " + getDateTime() + "\n" +
+			".END_HEADER\n" ;
+
+	}  //end sub
+
+
+
+string getEmpElectrical(){
+	/*
+	.ELECTRICAL
+	TSSOP16 NOREFDES MM 4876.80
+	0 -2.51 -2.28 0
+	0 2.51 -2.28 0
+	0 2.51 2.28 0
+	0 -2.51 2.28 0
+	0 -2.51 -2.28 0
+	.END_ELECTRICAL
+	*/
+
+	string electricalSection;
+
+	string footprint; 
+	string altname;
+
+	string libraryLookup;
+
+	string components[];
+
+	string component;
+
+	//loop thru elements on board
+	board( BRD ){
+
+		int i = 0;
+
+		BRD.elements( E ){
+
+			/*
+			//get footpring
+			footprint = E.value;
+
+			if( footprint == "" ){
+				footprint = E.name + "_" + E.package.name ;
+				}
+				*/
+
+			//check if library in lookup
+			libraryLookup = lookup( libraries, strupr(E.package.library), 0 );
+
+			//debug
+			if( debug ){
+				dlgMessageBox( libraryLookup );
+				}
+
+			//set footprint and altname based on logic
+			if( libraryLookup != "" ){
+				footprint = E.package.name;
+				altname = E.package.name;
+
+				//add comment to emn for debuggin
+				//placementSection += "#Resistor or rcl library found\n";
+				}
+			else if( E.value != "" ){
+				altname = E.value;
+				footprint = E.package.name;
+
+				//add comment to emn for debuggin
+				//placementSection += "#E.value present\n";
+				}
+			else{
+				//if library is not in list and the E.value is blank then concat refid and package name
+				altname = E.name + "_" + E.package.name;
+				footprint = E.package.name;
+
+				//add comment to emn for debuggin
+				//placementSection += "#Fallback logic applied. Not res/rcl and E.value not found.\n";
+				}
+
+			//check if element has already been written out
+			//component = lookup( components, footprint, 0 ); - fix for emp missing values
+
+			component = lookup( components, footprint + "~" + altname, 0 );
+
+			//if component is empty then it has not been written out yet.
+			if( component ==  "" ){
+
+				//build section by call to getComponentOutlineDummy( string footprint, string altname, string units )
+				electricalSection += ".ELECTRICAL\n" +
+										//getComponentOutlineDummy( footprint, altname, "MM" ) + 
+										getComponentOutline( footprint, altname, E.package.name, getBoardUnits() ) + 
+										".END_ELECTRICAL\n";
+
+				//add component to components list
+				//components[ i ] = footprint; - fix for emp missing values
+
+				components[ i ] = footprint + "~" + altname;
+
+
+
+				i++;
+				}  //end if
+
+			
+			}  //end loop thru elements
+		}  //end loop thru board
+
+
+	return electricalSection;
+
+	}  //end sub
+
+
+string getEmpMechanical(){
+
+	return "";
+	}  //end sub
+
+
+//-----------------------------------------------------------------------------
+// emn subroutines
+//-----------------------------------------------------------------------------
+string getEmnHeader(){
+	/*
+	.HEADER
+	BOARD_FILE 3.0 "Commend International >generate_3d_data_v10-5_MJB.ulp V0.9<" 2012/03/21.12:23:10 1
+	"untitled.brd" MM
+	.END_HEADER
+	*/
+	
+	string boardName;
+
+	//get board name
+	board( BRD ){
+		boardName = filename(BRD.name);
+		}
+
+	return ".HEADER\n" +
+			"BOARD_FILE 3.0 \"Eagle to 3D Version " + version + "\" " + getDateTime() + "\n" +
+			"\"" + boardName + "\" " + getBoardUnits() + "\n" + 
+			".END_HEADER\n";
+
+
+	}  //end sub
+
+string setUsedFlag( string pt ){
+	string fields[];
+	int fieldCount = strsplit( fields, pt, '\t');
+
+	return fields[0] + "\t" + fields[1] + "\t" + fields[2] + "\t" + fields[3] + "\ty\n";
+	}
+
+
+int isUsedPoint( string pt ){
+	string fields[];
+	int fieldCount = strsplit( fields, pt, '\t');
+
+	if( fields[4] == "n\n" )
+		return 0;
+	else
+		return 1;
+	}
+
+string isUsedPointDebug( string pt ){
+	string fields[];
+	int fieldCount = strsplit( fields, pt, '\t');
+
+	return fields[4];
+
+	}
+
+/*
+string swapPoints( string outlinePoints[], int toIndex, int fromIndex ){
+	//swapPoints( outlinePoints, (i+1), j );
+
+	string toPoints = outlinePoints[ toIndex ];
+	string fromPoints = outlinePoints[ fromIndex ];
+
+	//move toIndex to from position
+	outlinePoints[ fromIndex ] = toPoints;
+	outlinePoints[ toIndex ] = fromPoints;
+
+	return outlinePoints;
+	}
+*/
+
+string flipPoints( string line ){
+	string fields[];
+
+	int fieldCount = strsplit( fields, line, '\t');
+
+	return fields[2] + "\t" + fields[3] + "\t" + fields[0] + "\t" + fields[1] + "\t" + fields[4];
+	}
+
+string getFieldFromPtString( string ptString, int index ){
+	string fields[];
+
+	// "pt 1\ttype\tx1\ty1\tx2\ty2\tsorted_flag"
+	int fieldCount = strsplit( fields, ptString, '\t');
+
+	if( fieldCount >= index ){
+		return fields[ index ];
+		}
+	else{
+		return "";
+		}  //end if-else
+
+	}  //end sub
+
+real getX1FromPtString( string ptString ){
+	return strtod( getFieldFromPtString( ptString, 0 ) );
+	} //end sub
+
+real getY1FromPtString( string ptString ){
+	return strtod( getFieldFromPtString( ptString, 1 ) );
+	} //end sub
+
+real getX2FromPtString( string ptString ){
+	return strtod( getFieldFromPtString( ptString, 2 ) );
+	} //end sub
+
+real getY2FromPtString( string ptString ){
+	return strtod( getFieldFromPtString( ptString, 3 ) );
+	} //end sub
+
+
+int layerNumInUse( int layerNum ){
+	//returns true=1 if layer is being used. returns 0 if layer is not used.
+	int layerUsed = 0;
+
+	board( B ){
+		B.layers( L ){
+			if( L.number == layerNum ){
+				layerUsed = 1;
+				}  //end if
+			}  //layers loop
+		}  //board loop
+
+	return layerUsed;
+	}
+
+
+int layerIsIDFDebug( int layerNum ){
+	board( B ){
+		B.layers( L ){
+			if( L.number == layerNum && L.name == "IDFDebug" ){
+				return 1;
+				}  //end if
+			}  //layers loop
+		}  //board loop
+	
+	return 0;
+	}
+
+string getIDFDebugLayerAvailNum(){
+
+	//loop thru layers and check for name IDFDebug
+	int startSearchNumber = 100;
+	int layerAvail = -1;
+
+	for (int i = startSearchNumber; i < 256; ++i){
+
+		//if layer is not in use then use it. also have to check if layer is in use but is already idf debug
+		if( !layerNumInUse( i ) ){
+			layerAvail = i;
+			break;
+			}
+		else{
+			//check to make sure layer is not already idf debug
+			if( layerIsIDFDebug( i ) ){
+				layerAvail = i;
+				break;
+				}  //end if
+			}  //end if-else
+		}  //end for
+
+
+	string temp;
+
+	sprintf( temp, "%d", layerAvail );
+
+	return temp;
+
+	}  //end func
+
+
+string getIDFDebugLayerNum(){
+
+	//loop thru layers and check for name IDFDebug
+	int IDFDebugLayerNum = -1;
+
+	board( B ){
+		B.layers( L ){
+			if( L.name == "IDFDebug" ){
+				IDFDebugLayerNum = L.number;
+				}  //end if
+			}  //layers loop
+		}  //board loop
+
+	string temp;
+
+	sprintf( temp, "%d", IDFDebugLayerNum );
+
+	return temp;
+
+	}  //end func
+
+string removeIDFDebugLayerCommands(){
+
+	//check if present
+	string debugLayerNum = getIDFDebugLayerNum();
+
+	//if debugLayerNum is -1 then it doesnt exist so no delete needed.
+	if( debugLayerNum == "-1" ){
+		return "";
+		}
+	else{
+		string commands;
+
+		//commands
+		//show only IDFDebugLayer
+		commands += "DISPLAY -20 " + debugLayerNum + ";";
+
+
+		//run group all command to select all circles
+		//commands += "GROUP ALL;";
+
+		//delete circles
+		//DELETE (x y) where x y are points on circle outline
+		board( B ){
+			B.circles( C ){
+				if( C.layer == strtol(debugLayerNum) ){
+
+					commands += "DELETE ( " + rtos(getDimInBoardUnits(C.x)) + " " +  rtos(getDimInBoardUnits(C.y)) + " );";
+
+					}  //end if
+				}  //end wire loop 
+
+			B.wires( W ){
+				if( W.layer == strtol(debugLayerNum) ){
+
+					commands += "DELETE ( " + rtos(getDimInBoardUnits(W.x1)) + " " +  rtos(getDimInBoardUnits(W.y1)) + " );";
+
+					}  //end if
+				}  //end wire loop 
+
+			}  //board loop
+
+
+		//delete layer now
+		commands += "LAYER ?? -" + debugLayerNum + ";";
+
+
+		return commands;
+		}  //end if/else
+	}  //end fund
+
+
+
+int countWires(){
+	int wiresCounter = 0;
+
+	board( BRD ){
+		//loop thru wires
+		BRD.wires(W){
+			if (W.layer == 20){
+
+				if ( W.arc ){
+					wiresCounter++;
+					}
+				else{
+					wiresCounter++;
+					}  //end if-else
+				}  //end if for layer 20
+			}  //end loop thru wires
+		}  //end loop thru board
+
+	return wiresCounter;
+	}
+
+
+int countWireHoles(){
+	int holeCount = 0;
+	
+	board( BRD ){
+		/*
+		BRD.holes(H){ 
+
+			holeCount++;
+			}  //end holes
+			*/
+
+		BRD.circles(C){
+			if( C.layer == 20 ){
+				holeCount++;
+				}
+			}
+		}  //end board loop
+
+	return holeCount;
+
+	}  //end func
+
+real tolerance = getTolerance();
+
+string getEmnBoardOutline(){
+
+	/*
+	Board outline logic
+	--------------------
+	1. Loop thru wires on layer 20 and parse out points based on type of wire. 
+	   Wire can be either arc or line. If it is an arc then the .arc property is set to 1.
+
+	2. For lines extract the start and end points. For arcs you need to convert them in 
+	   to a set of lines that simulates an arc by drawing a line at angle increments. 
+
+	3. After looping thru the wires on layer 20 verify that wires were actually found.
+	   If none were found then exit the ulp and notify the user no lines were found on layer 20.
+
+	4. Once the points are loaded to the array they need to reordered so that they are written in the correct order in the outline. 
+	   To accomplish this you need to first fine the start point. I do this by finding the point closest to 0,0.
+
+	5. Once the line with a start point closest to 0,0 is found I then look thru the points to find a match for the end point of the first line. 
+	   The lines may not be written in end point to start point so you need to check for closet match on both the start and end.
+
+	6. After sorting the lines you can now write out the points to the board_outline section. I check for matches from end to start points.
+	  If a match isnt found then I assume a new outline is found and increment the counter. I also need to make sure that when a new outline is found that the prev
+	  outline is closed.
+	*/
+
+	//init vars
+	int debug = 1; //used for debugging and generation of log in board outline processing
+	string logFilePath = filesetext( getBoardPath(), ".log" );
+	string boardThickness = getBoardThickness();
+	string boardOutlineSection = ".BOARD_OUTLINE UNOWNED\n" + boardThickness + "\n";
+	int wireCount = 0;
+
+	string outlinePoints[]; //holds points extracted from board
+	string outlinePointsSorted[];  //holds points after they are sorted
+
+	real deg2rad = 0.0174532925;  //used to convert degress to radians for arc parsing
+
+	real bx1 = 0.0, by1 = 0.0, bx2 = 0.0, by2 = 0.0;  //line start and end points
+	real startX = 0.0, startY = 0.0;
+	int outlineNum = 0;
+
+	//used for drawing arc lines
+	real incx = 0.0, incy = 0.0;  //store incremental x/y values for arc
+	real currentAngle = 0.0, incrementAngle = 15.0;
+
+	string temp;  //temp string used with sprintf
+
+	int  newOutline = 1;
+	string pad = "     ";
+
+	real minDist = -1.0;  //used to keep track of min distance found
+	real dist = 0.0; //used to store distance between two points
+
+	string fromPoints, toPoints;
+	string boardOutlineSectionDebug;
+
+	int matchFound = 0;
+
+	/*   Step 1 & 2   */
+	//loop thru layer 20 and wires on layer
+	board( BRD ){
+		//loop thru wires
+		BRD.wires(W){
+
+			//only pull layer 20 wires
+			if (W.layer == 20){
+				//get wire start and end points
+				
+				
+				bx1 = getDimInBoardUnits(W.x1), 
+						by1 = getDimInBoardUnits(W.y1),
+						bx2 = getDimInBoardUnits(W.x2), 
+						by2 = getDimInBoardUnits(W.y2);
+
+				
+
+				//handle arcs and lines differently
+				if ( W.arc ){
+
+					//for arc get data to generate points
+					real angle1=W.arc.angle1, 
+							angle2=W.arc.angle2, 
+							centerx=getDimInBoardUnits(W.arc.xc), 
+							centery= getDimInBoardUnits(W.arc.yc);
+
+					real endx = bx2, endy = by2;  //store arc end points to close arc.
+
+					//reset current angle value
+					currentAngle = incrementAngle;
+
+					//determine which direction to draw arc by getting x/y points based on angle1
+					incx = (cos( deg2rad * (angle1) )*getDimInBoardUnits( W.arc.radius ) ) + centerx;
+					incy = (sin( deg2rad * (angle1) )*getDimInBoardUnits( W.arc.radius ) ) + centery;
+
+					//check if arc start points match calculated start points using angle1. if they do then its a counter clockwise drawn arc
+					if( compareReals( incx, bx1 ) && compareReals( incy, by1 ) ){
+
+						///loop thru 5 deg increments
+						//arc defined counter clockwise so you need to subtract the increment
+						while( ( angle1 + currentAngle ) < angle2 ){
+
+							incx = (cos( deg2rad * (angle1 + currentAngle) )*getDimInBoardUnits( W.arc.radius ) ) + centerx;
+							incy = (sin( deg2rad * (angle1 + currentAngle) )*getDimInBoardUnits( W.arc.radius ) ) + centery;
+
+							sprintf( temp ,"%f\t%f\t%f\t%f\tn\n", bx1, by1, incx, incy );
+
+							outlinePoints[ wireCount ] = temp;
+
+							currentAngle += incrementAngle;
+
+							wireCount++;
+
+							//update beginning x/y values
+							bx1 = incx;
+							by1 = incy;
+							}  //end while
+
+						}
+					else{
+						///loop thru 5 deg increments
+						//arc defined counter clockwise so you need to subtract the increment
+						while( ( angle2 - currentAngle ) > angle1 ){
+
+							incx = (cos( deg2rad * (angle2 - currentAngle) )*getDimInBoardUnits( W.arc.radius ) ) + centerx;
+							incy = (sin( deg2rad * (angle2 - currentAngle) )*getDimInBoardUnits( W.arc.radius ) ) + centery;
+
+							sprintf( temp ,"%f\t%f\t%f\t%f\tn\n", bx1, by1, incx, incy );
+
+							outlinePoints[ wireCount ] = temp;
+
+							currentAngle += incrementAngle;
+
+							wireCount++;
+
+							//update beginning x/y values
+							bx1 = incx;
+							by1 = incy;
+							}  //end while
+						}  //end if/else for check on direction of arc
+
+					//close arc
+					sprintf( temp ,"%f\t%f\t%f\t%f\tn\n", bx1, by1, endx, endy );
+
+					outlinePoints[ wireCount ] = temp;
+
+					wireCount++;
+					}
+				else{
+					//process lines
+					sprintf( temp ,"%f\t%f\t%f\t%f\tn\n", bx1, by1, bx2, by2 );
+
+					outlinePoints[ wireCount ] = temp;
+
+					wireCount++;
+
+					}  //end if for arc
+				}  //end if check for layer=20
+			}  //end loop thru wires
+		}  //end loop thru board
+
+	/*   Step 3 - Verify wires found   */
+	//make sure wires were found
+	if( wireCount == 0 ){
+		if( countWireHoles() > 0 ){
+
+			board( B ){
+				B.circles( C ){
+
+					real angle1 = 0;
+					real angle2 = 360;
+
+					real currentAngle = 0;
+
+					real radius = getDimInBoardUnits( C.radius );
+					real centerx = getDimInBoardUnits( C.x );
+					real centery = getDimInBoardUnits( C.y );
+					real bx1 = centerx + radius;
+					real by1 = centery;
+
+
+					while( ( angle1 + currentAngle ) <= angle2 ){
+
+						incx = (cos( deg2rad * (angle1 + currentAngle) )*radius ) + centerx;
+						incy = (sin( deg2rad * (angle1 + currentAngle) )*radius ) + centery;
+
+						sprintf( temp ,"%f\t%f\t%f\t%f\tn\n", bx1, by1, incx, incy );
+
+						outlinePoints[ wireCount ] = temp;
+
+						currentAngle += incrementAngle;
+
+						wireCount++;
+
+						//update beginning x/y values
+						bx1 = incx;
+						by1 = incy;
+						}  //end while
+
+					//close loop
+					/*
+					sprintf( temp ,"%f\t%f\t%f\t%f\tn\n", bx1, by1, (centerx + radius), centery );
+
+					outlinePoints[ wireCount ] = temp;
+
+					wireCount++;
+					*/
+
+					}  //end circle loop
+
+				}  //end board loop
+			//exit(0);
+			}
+		else{
+			dlgMessageBox( "No wires were found on layer 20.\nUnable to detect board outline. Exiting." );
+			exit(0);
+			}
+		}  //end if
+
+	if( debug ){
+		boardOutlineSectionDebug += "########### array before sorts ###########\n";
+
+		for( int j = 0; j < wireCount; j++ ){
+			sprintf( temp ,"%d\t%s", j, outlinePoints[ j ] );
+
+			boardOutlineSectionDebug += temp;
+			}  //end for
+		}  //end if
+
+/*
+	//calculate tolerance based on 1/2 of smallest wire length
+	for( int i = 0; i < wireCount; i++ ){
+		bx1 = getX1FromPtString( outlinePoints[ i ] );
+		by1 = getY1FromPtString( outlinePoints[ i ] );
+		bx2 = getX2FromPtString( outlinePoints[ i ] );
+		by2 = getY2FromPtString( outlinePoints[ i ] );
+
+		dist = getDistBetweenPts( bx1, by1, bx2, by2 );
+
+		if( minDist == -1.0 ){
+			minDist = dist;
+			}
+		else if( dist < minDist ){
+			minDist = dist;
+			}
+		else{
+			//do nothing if dist is not smaller then minDist
+			}
+		}  //end for loop
+
+	tolerance = minDist / 2;
+	*/
+
+	/*   Step 4 & 5 - Verify wires found   */
+	//loop thru points and sort so they are in order
+	//outer loop thru points
+	boardOutlineSectionDebug += "Tolerance=" + rtos( tolerance ) + ".\n";
+
+	for( int i = 0; i < wireCount; i++ ){
+
+		//boardOutlineSection += itos( outlineNum ) + pad + 
+		//						rtos( getX1FromPtString( outlinePoints[ i ] ) ) + pad + 
+		//						rtos( getY1FromPtString( outlinePoints[ i ] ) ) + pad + "0\n";
+
+		outlinePoints[ i ] = setUsedFlag( outlinePoints[ i ] );
+
+		//get line end points
+		bx2 = getX2FromPtString( outlinePoints[ i ] );
+		by2 = getY2FromPtString( outlinePoints[ i ] );
+
+		//handle initializations, new outlines, and closed outline checks.
+		if( i == 0 ){
+			startX = getX1FromPtString( outlinePoints[ i ] );
+			startY = getY1FromPtString( outlinePoints[ i ] );
+
+			boardOutlineSection += itos( outlineNum ) + pad + 
+									rtos( getX1FromPtString( outlinePoints[ i ] ) ) + pad + 
+									rtos( getY1FromPtString( outlinePoints[ i ] ) ) +pad +  "0\n";
+
+			newOutline = 0;
+			}
+		else if( newOutline ){
+			startX = getX1FromPtString( outlinePoints[ i ] );
+			startY = getY1FromPtString( outlinePoints[ i ] );
+
+			boardOutlineSection += itos( outlineNum ) + pad + 
+									rtos( getX1FromPtString( outlinePoints[ i ] ) ) + pad + 
+									rtos( getY1FromPtString( outlinePoints[ i ] ) ) + pad + "0\n";
+
+			newOutline = 0;
+			}
+		//check if point closes outline
+		else if( getDistBetweenPts( startX, startY, getX2FromPtString( outlinePoints[ i ] ), getY2FromPtString( outlinePoints[ i ] ) ) == 0 ){
+			boardOutlineSection += itos( outlineNum ) + pad + 
+												rtos( getX2FromPtString( outlinePoints[ i ] ) ) + pad + 
+												rtos( getY2FromPtString( outlinePoints[ i ] ) ) + pad + "0\n";
+
+			outlineNum++;
+
+			newOutline = 1;
+
+			continue;
+			}  //end if
+		else if( getDistBetweenPts( startX, startY, getX2FromPtString( outlinePoints[ i ] ), getY2FromPtString( outlinePoints[ i ] ) ) <= tolerance ){
+			boardOutlineSection += itos( outlineNum ) + pad + 
+												rtos( startX ) + pad + 
+												rtos( startY ) + pad + "0\n";
+
+			outlineNum++;
+
+			newOutline = 1;
+
+			continue;
+			}  //end if
+
+		matchFound = 0;
+
+		//inner loop thru points to find matching line
+		for( int j = 0; j < wireCount; j++ ){
+
+			//boardOutlineSectionDebug += "Checking points for i=" + itos( i ) + " and j=" + itos( j ) + ".\n";
+
+			//check if line is already used. if it is then skip it
+			if( !isUsedPoint( outlinePoints[ j ] ) ){
+
+				//check for exact match on line start
+				if( getDistBetweenPts( bx2, by2, getX1FromPtString( outlinePoints[ j ] ), getY1FromPtString( outlinePoints[ j ] ) ) == 0 ){
+					
+					boardOutlineSectionDebug += "*Exact match for i=" + itos( i ) + " and j=" + itos( j ) + ".\n";
+					boardOutlineSectionDebug += "*i point " + outlinePoints[ i ];
+
+					boardOutlineSection += itos( outlineNum ) + pad + 
+									rtos( getX1FromPtString( outlinePoints[ j ] ) ) + pad + 
+									rtos( getY1FromPtString( outlinePoints[ j ] ) ) + pad + "0\n";
+
+					//flag points as used
+					outlinePoints[ j ] = setUsedFlag( outlinePoints[ j ] );
+
+					//swap matched point with current point
+					//outlinePoints = swapPoints( outlinePoints, (i+1), j );
+
+					toPoints = outlinePoints[ j ];
+					fromPoints = outlinePoints[ (i+1) ];
+
+					//move toIndex to from position
+					outlinePoints[ (i+1) ] = toPoints;
+					outlinePoints[ j ] = fromPoints;
+
+					matchFound = 1;
+
+					break;
+					}
+				//check for exact match on line end
+				else if( getDistBetweenPts( bx2, by2, getX2FromPtString( outlinePoints[ j ] ), getY2FromPtString( outlinePoints[ j ] ) ) == 0 ){
+					boardOutlineSectionDebug += "*Exact match for i=" + itos( i ) + " and j=" + itos( j ) + ".\n";
+					boardOutlineSectionDebug += "*i point " + outlinePoints[ i ];
+
+					boardOutlineSection += itos( outlineNum ) + pad + 
+									rtos( getX2FromPtString( outlinePoints[ j ] ) ) + pad + 
+									rtos( getY2FromPtString( outlinePoints[ j ] ) ) + pad + "0\n";
+
+					//flag point as used
+					outlinePoints[ j ] = setUsedFlag( outlinePoints[ j ] );
+
+					boardOutlineSectionDebug += "\t*Before flip \t" + outlinePoints[ j ];
+
+					//flip point
+					outlinePoints[ j ] = flipPoints( outlinePoints[ j ] );
+
+					boardOutlineSectionDebug += "\t*After flip \t" + outlinePoints[ j ];
+
+					//swap matched point with current point
+					//outlinePoints = swapPoints( outlinePoints, (i+1), j );
+
+					toPoints = outlinePoints[ j ];
+					fromPoints = outlinePoints[ (i+1) ];
+
+					//move toIndex to from position
+					outlinePoints[ (i+1) ] = toPoints;
+					outlinePoints[ j ] = fromPoints;
+
+					matchFound = 1;
+
+					break;
+					}
+				//check for tolerance match on line start
+				else if( getDistBetweenPts( bx2, by2, getX1FromPtString( outlinePoints[ j ] ), getY1FromPtString( outlinePoints[ j ] ) ) <= tolerance ){
+
+					boardOutlineSectionDebug += "*Tolerance match for i=" + itos( i ) + " and j=" + itos( j ) + ". Dist=" + rtos( getDistBetweenPts( bx2, by2, getX1FromPtString( outlinePoints[ j ] ), getY1FromPtString( outlinePoints[ j ] ) ) ) + "\n";
+					boardOutlineSectionDebug += "*i point " + outlinePoints[ i ];
+
+					boardOutlineSection += itos( outlineNum ) + pad + 
+									rtos( bx2 ) + pad + 
+									rtos( by2 ) + pad + "0\n";
+
+					boardOutlineSectionDebug += "\t*Before fix for tolerance \t" + outlinePoints[ j ];
+
+					
+					//update matched point start points to prev line end points to fix the gap
+					sprintf( temp ,"%f\t%f\t%f\t%f\tn\n", bx2, by2, getX2FromPtString( outlinePoints[ j ] ), getY2FromPtString( outlinePoints[ j ] ) );
+
+					outlinePoints[ j ] = temp;
+
+					boardOutlineSectionDebug += "\t*After fix for tolerance \t" + outlinePoints[ j ];
+
+					//flag points as used
+					outlinePoints[ j ] = setUsedFlag( outlinePoints[ j ] );
+
+					//swap matched point with current point
+					//outlinePoints = swapPoints( outlinePoints, (i+1), j );
+
+					toPoints = outlinePoints[ j ];
+					fromPoints = outlinePoints[ (i+1) ];
+
+					//move toIndex to from position
+					outlinePoints[ (i+1) ] = toPoints;
+					outlinePoints[ j ] = fromPoints;
+
+					matchFound = 1;
+
+					break;
+					}
+				//check for tolerance match on line end
+				else if( getDistBetweenPts( bx2, by2, getX2FromPtString( outlinePoints[ j ] ), getY2FromPtString( outlinePoints[ j ] ) ) <= tolerance ){
+
+					boardOutlineSectionDebug += "*Tolerance match for i=" + itos( i ) + " and j=" + itos( j ) + ". Dist=" + rtos( getDistBetweenPts( bx2, by2, getX2FromPtString( outlinePoints[ j ] ), getY2FromPtString( outlinePoints[ j ] ) ) ) + "\n";
+					boardOutlineSectionDebug += "*i point " + outlinePoints[ i ];
+
+					boardOutlineSection += itos( outlineNum ) + pad + 
+									rtos( bx2 ) + pad + 
+									rtos( by2 ) + pad + "0\n";
+
+					boardOutlineSectionDebug += "\t*Before fix for tolerance \t" + outlinePoints[ j ];
+					
+					//update matched point start points to prev line end points to fix the gap
+					sprintf( temp ,"%f\t%f\t%f\t%f\tn\n", getX1FromPtString( outlinePoints[ j ] ), getY1FromPtString( outlinePoints[ j ] ), bx2, by2 );
+
+					outlinePoints[ j ] = temp;
+
+					boardOutlineSectionDebug += "\t*After fix for tolerance \t" + outlinePoints[ j ];
+
+					//flag points as used
+					outlinePoints[ j ] = setUsedFlag( outlinePoints[ j ] );
+
+					boardOutlineSectionDebug += "\t*Before flip \t" + outlinePoints[ j ];
+
+					//flip point
+					outlinePoints[ j ] = flipPoints( outlinePoints[ j ] );
+
+					boardOutlineSectionDebug += "\t*After flip \t" + outlinePoints[ j ];
+
+					//swap matched point with current point
+					//outlinePoints = swapPoints( outlinePoints, (i+1), j );
+
+					toPoints = outlinePoints[ j ];
+					fromPoints = outlinePoints[ (i+1) ];
+
+					//move toIndex to from position
+					outlinePoints[ (i+1) ] = toPoints;
+					outlinePoints[ j ] = fromPoints;
+
+					matchFound = 1;
+
+					break; 
+					}
+				//else line has not matching point. 
+				else{
+					//boardOutlineSectionDebug += "No match for i=" + itos( i ) + " and j=" + itos( j ) + ".\n";
+				
+					}  //end if-else
+
+				}
+			else{
+				//do nothing for skipped line
+				//boardOutlineSectionDebug += "Points skipped for i=" + itos( i ) + " and j=" + itos( j ) + ".\n";
+				}  //end if/else
+
+			}  //end j loop
+
+		//check to make sure a matching point was found. if not notify user and mark on board.
+		if( !matchFound ){
+			boardOutlineSectionDebug += "No match for i=" + itos( i ) +  ".\n";
+
+
+			//if no match found then generate circle command and exit.
+			string circleDefectCommands;
+			string runCommands;
+
+			sprintf( circleDefectCommands, "CIRCLE (%f %f) (%f %f);", backConvertDimensions( bx2 ), 
+																		backConvertDimensions( by2 ), 
+																		backConvertDimensions( bx2+2.0 ), 
+																		backConvertDimensions( by2 ) );
+
+			//delete existing debug layer if it exists
+			runCommands += removeIDFDebugLayerCommands();
+
+			//get debug layer number
+			string debugLayerNum = getIDFDebugLayerAvailNum();
+
+
+			//dlgMessageBox( "A fatal defect was found in your board outline in the form\n" +
+			//	"of a gap in the board outline. We cannot repair this defect.\n\n" + 
+			//	"Defects will be shown on layer " + debugLayerNum + " with red circles." );
+
+			dlgMessageBox( "An error was found in your board outline that cannot be automatically repaired.  Outlines must be enclosed loops.\n" +
+							"Defects will be shown on layer " + debugLayerNum + " with red circles." );
+
+			string wireCommands = "change width 0.01;\nSET Wire_Bend 2;\n";
+
+			if( debug ){
+				boardOutlineSectionDebug += "########### array after sorts ###########\n";
+
+				//build wire commands that will draw the outlines that have been matched. the last wire will be drawn but it has no match
+				for( int j = 0; j < wireCount; j++ ){
+					sprintf( temp ,"%d\t%s", j, outlinePoints[ j ] );
+					boardOutlineSectionDebug += temp;
+
+					if( isUsedPoint( outlinePoints[ j ] ) ){
+						wireCommands += "WIRE ( " + rtos( backConvertDimensions( getX1FromPtString( outlinePoints[ j ] ) ) ) + " " + 
+													rtos( backConvertDimensions( getY1FromPtString( outlinePoints[ j ] ) ) ) +  ") (" + 
+													rtos( backConvertDimensions( getX2FromPtString( outlinePoints[ j ] ) ) ) + " " + 
+													rtos( backConvertDimensions( getY2FromPtString( outlinePoints[ j ] ) ) )+ ");";
+						}
+					}  //end for
+				}  //end if
+	
+			//circleDefectCommands = "LAYER 100 IDFDebug;SET COLOR_LAYER 100 red;CHANGE WIDTH 0.01;" + 
+			//removed change width comand
+			runCommands += "LAYER " + debugLayerNum + " IDFDebug;" + 
+									"SET COLOR_LAYER " + debugLayerNum + " red;" + 
+									circleDefectCommands + wireCommands + 
+									"DISPLAY NONE;" + 
+									"DISPLAY 20 " + debugLayerNum + ";" +
+									"WINDOW FIT;";
+			
+
+			if( debug ){
+				writeToFile( logFilePath, boardOutlineSectionDebug + "***************\n" + runCommands + "***************\n" + boardOutlineSection );
+				}
+			
+			exit( runCommands );
+			}  //end if for matchfound
+
+
+		}  //end i loop
+
+	if( debug ){
+		boardOutlineSectionDebug += "########### array after sorts ###########\n";
+
+		for( int j = 0; j < wireCount; j++ ){
+			sprintf( temp ,"%d\t%s", j, outlinePoints[ j ] );
+
+			boardOutlineSectionDebug += temp;
+			}  //end for
+		}  //end if
+
+
+	if( debug ){
+		writeToFile( logFilePath, boardOutlineSectionDebug+ "***************\n" + boardOutlineSection );
+		}
+
+	boardOutlineSection += ".END_BOARD_OUTLINE\n";
+
+	//exit(0);
+	
+	return boardOutlineSection;
+	}  //end getEmnBoardOutline 
+
+
+
+
+string getEmnDrilledHoles(){
+	/*
+	.DRILLED_HOLES
+	40.0 1773.0 1207.5 PTH S1 PIN ECAD
+	40.0 1773.0 1384.5 PTH S1 PIN ECAD
+	40.0 2029.0 1207.5 PTH S1 PIN ECAD
+	...
+	.END_DRILLED_HOLES
+	*/
+
+	string drilledHolesSection = ".DRILLED_HOLES\n";
+	string temp;
+
+	int holeCount = 0;
+
+	board( BRD ){
+		//loop thru holes
+		BRD.holes(H){ 
+			sprintf( temp, "%10.4f%10.4f%10.4f  NPTH  BOARD OTHER UNOWNED\n", (getDimInBoardUnits(H.drill)), (getDimInBoardUnits(H.x)), (getDimInBoardUnits(H.y)) ); 
+
+			drilledHolesSection += temp;
+
+			holeCount++;
+			}  //end holes
+
+		//get any holes from packages on elements
+		BRD.elements(E){ 
+			E.package.holes(C){ 
+				sprintf( temp, "%10.4f%10.4f%10.4f  NPTH  %-4s PIN UNOWNED\n", (getDimInBoardUnits(C.drill)), (getDimInBoardUnits(C.x)), (getDimInBoardUnits(C.y)), E.name ); 
+
+				drilledHolesSection += temp;
+
+				holeCount++;
+				}  //end package.holes
+
+
+			E.package.contacts(P){
+				if (P.pad){
+					sprintf( temp, "%.2f %.2f %.2f PTH BOARD VIA UNOWNED\n", getDimInBoardUnits(P.pad.drill), getDimInBoardUnits(P.x), getDimInBoardUnits(P.y) ); 
+
+					drilledHolesSection += temp;
+
+					holeCount++;
+					}  //end if
+				}  //end loop thru contacts
+
+			}  //end elements
+
+		//get any holes on vias
+		BRD.signals(S){
+			S.vias(V){ 
+				sprintf( temp, "%10.4f%10.4f%10.4f  NPTH  BOARD OTHER UNOWNED\n", (getDimInBoardUnits(V.drill)), (getDimInBoardUnits(V.x)), (getDimInBoardUnits(V.y)) ); 
+
+				drilledHolesSection += temp;
+
+				holeCount++;
+				}
+			}
+		}  //end board loop
+
+
+	//close drilled holes section
+	drilledHolesSection += ".END_DRILLED_HOLES\n";
+
+	//check if drilled holes is empty and if so clear it
+	if( holeCount == 0 ){
+		drilledHolesSection = "";
+		}
+
+	return drilledHolesSection;
+	}  //end sub
+
+
+string getEmnPlacements(){
+	/*
+	.PLACEMENT
+	0805 RES R4
+	2300.0 1275.0 0.0 180.0 TOP PLACED
+	0805 CAP C13
+	2565.0 1380.0 0.0 0.0 TOP PLACED
+
+	<footprint>  <altname>   <refid>
+	<x>   <y>  <?>  <rot>  <top/bottom>  <placed>
+
+	...
+	.END_PLACEMENT
+	*/
+
+
+	string sideMap[] = {"TOP","BOTTOM"};
+
+	string placementSection;
+
+	string footprint; 
+	string altname;
+	string ref_id;
+
+	string components[];
+
+	string component;
+
+	string temp;
+
+	string side;
+
+	string libraryLookup; //used to check if library is in array
+
+
+	placementSection = ".PLACEMENT\n";
+
+	//loop thru elements on board
+	board( BRD ){
+
+		int i = 0;
+
+		BRD.elements( E ){
+
+			//get footprint and altname
+			/*
+			1. If an item is in the rcl or the resistor library, I would like the Package Name to be written out 
+			   in the first two fields of the emn and emp files regardless of whether or not the ?value? field is empty or populated.
+			2. if value populated then use it for footprint
+			3. concatenate name (ref id) and package for footpring
+			*/
+
+			//check if package library is in list
+			//if( strupr(E.package.library) == "RCL" || strupr(E.package.library) == "RESISTOR" ){
+
+			//look up package library in libraries array
+			//check if element has already been written out
+			libraryLookup = lookup( libraries, strupr(E.package.library), 0 );
+
+
+			//debug
+			if( debug ){
+				dlgMessageBox( libraryLookup );
+				}
+
+			//logic to setup footprint an altname values
+			if( libraryLookup != "" ){
+				//if found in libraryLookup then assign package name to both footprint and altname
+				altname = E.package.name;
+				footprint = E.package.name;
+				}
+			else if( E.value != "" ){
+				//if e.value is not empty then put it in the footprint
+				altname = E.value;
+				footprint = E.package.name;
+				}
+			else{
+				//if library is not in list and the E.value is blank then concat refid and package name
+				altname = E.name + "_" + E.package.name;
+				footprint = E.package.name;
+				}  //end if-else
+
+			//make sure footprint and altname dont have spaces
+			if( strstr( footprint, " " ) >= 0 ){
+				footprint = replaceSpaceWithUnderscore( footprint );
+				}
+
+			if( strstr( altname, " " ) >= 0 ){
+				altname = replaceSpaceWithUnderscore( altname );
+				}
+
+			//parse out ref id earlier and check for spaces
+			ref_id = E.name;
+
+			if( strstr( ref_id, " " ) >= 0 ){
+				ref_id = replaceSpaceWithUnderscore( ref_id );
+				}
+
+			//get side value based on mirror value
+			side = sideMap[ E.mirror ];
+
+			sprintf( temp, "%s %s %s\n%f %f 0 %f %s PLACED\n", footprint, altname, ref_id, getDimInBoardUnits( E.x ), getDimInBoardUnits( E.y ), E.angle, side );
+			//sprintf( temp, "%s %s %s\nPLACED\n", footprint, E.package.name, E.name );
+
+			placementSection += temp;
+
+			//add component to components list
+			//components[ i ] = footprint; - fix for emp missing values
+
+			components[ i ] = footprint + "~" + altname;
+
+			i++;
+
+			}  //end loop thru elements
+		}  //end loop thru board
+
+
+
+	placementSection += ".END_PLACEMENT\n";
+
+
+	return placementSection;
+
+	}  //end sub
+
+string generateEmn(){
+
+	//build emn file
+	string emn = getEmnHeader() + 
+					getEmnBoardOutline() + 
+					getEmnDrilledHoles() + 
+					getEmnPlacements();
+
+	return emn;
+	}  //end sub
+
+string generateEmp(){
+
+	//build emp file
+	string emp = getEmpHeader() +
+					getEmpElectrical() +
+					getEmpMechanical();
+
+	return emp;
+	}  //end sub
+
+/*
+void generateEmnEmpFiles(){
+
+	//build emn file
+	string emn = getEmnHeader() + 
+					getEmnBoardOutline() + 
+					getEmnDrilledHoles() + 
+					getEmnPlacements();
+
+
+	//build emp file
+	string emp = getEmpHeader() +
+					getEmpElectrical() +
+					getEmpMechanical();
+
+
+	//write out for now
+	output( "C:/Users/Marco/Documents/Eagle Programs/emn.emn", "w" ){
+		printf( emn );
+		}
+
+	output( "C:/Users/Marco/Documents/Eagle Programs/emp.emp", "w" ){
+		printf( emp );
+		}
+	}  //end sub
+*/
+
+//Submits emn and emp data to IDF site. IDF returns full html page.
+void submitFormData(){
+
+	//update user now as the post will take some time to start
+	textMessageDialog = getHtmlText( "<font size=5 color=green>3D build request submitted. Please wait for update...</font>" );
+
+	dlgRedisplay();
+
+	if( debug ){
+		dlgMessageBox( path_ulp[0] );
+		}
+
+
+	//get board name
+	string boardName;
+	string boardDir;
+
+	board( BRD ){
+		boardName = filename( BRD.name );
+
+		boardDir = filedir( BRD.name );
+		}  //end board
+
+	//demo stuff
+	/*
+	string demoPath = "C:/Users/Marco/Documents/Eagle Programs/";
+	string emnData = parseFileToHtmlForm( path_ulp[0] + "/" + "eagleto3ddemo.emn" ) + "\n";
+	string empData = parseFileToHtmlForm( path_ulp[0] + "/" + "eagleto3ddemo.emp" ) + "\n";
+	*/
+
+	//get emn and emp strings
+	string emnData = generateEmn() + "\n";
+	string empData = generateEmp() + "\n";
+
+	//debug
+	
+	if( 0 ){
+		//boardDir = "/Users/marcbattistello/";  //hardcode since write issues to program files
+		boardDir = "C:/Users/Marco/Desktop/";
+
+		//show path to user
+		dlgMessageBox( "Writing IDF Files: " + boardDir + filesetext( boardName, ".emn") );
+
+		output( boardDir + filesetext( boardName, ".emn"), "wt" ){
+			printf( emnData );
+			}
+
+		output( boardDir + filesetext( boardName, ".emp"), "wt" ){
+			printf( empData );
+			}
+		}  //end if
+		
+	//exit(0);
+
+	//convert to html format
+	emnData = parseStringToHtmlForm( emnData );
+	empData = parseStringToHtmlForm( empData );
+
+	//debug
+	if( debugIDFHtml ){
+		output( boardDir + filesetext( boardName, ".html_emn"), "w" ){
+			printf( emnData );
+			}
+
+		output( boardDir + filesetext( boardName, ".html_emp"), "w" ){
+			printf( empData );
+			}
+		}  //end if
+
+
+	//data for url post
+	string postResponse;
+	string postData;
+	int requestSubmitted = 0;
+
+	//strings used to build some html elements
+	string tempStr;
+	string thumbnailImg;
+	string pdf3dLink;
+	string thumbnailLink;
+
+	string purchaseStlLink;
+	string purchaseDownloadLink;
+	string complete3DDesignLink;
+
+	//response data
+	string jobId;
+	string jobStatus;
+	string percentComplete;
+	string sessionKey;
+
+	string downloadPurchaseUrl;
+	string stlPurchaseUrl;
+	string complete3DDesignUrl;
+
+	int jobCompleted = 0;
+
+	//loop thru form post
+	for( int i = 0; i < 50000; i++ ){
+
+		//only check every 10th loop
+		if( i % 10 == 0 ){
+
+			//check if request has already been submitted
+			if( !requestSubmitted ){
+				//load data to post parameters
+				sprintf( postData,"emn=%s\nemp=%s\nboardname=%s", emnData, empData, boardName );
+				}
+			else{
+				//load data to post parameters
+				sprintf( postData,"id=%s", jobId );
+				}  //end if-else
+
+			if( netpost( postResponse, service_url, postData ) >= 0 ) {
+
+				if( debug ){
+					dlgMessageBox( postResponse );
+					}
+
+				//after first request set to 1/true
+				requestSubmitted = 1;
+
+				//parse xml response data
+				jobStatus = xmltext( postResponse, "response/status" );
+				jobId = xmltext( postResponse, "response/id" );
+				percentComplete = xmltext( postResponse, "response/percent_complete" );
+				sessionKey = xmltext( postResponse, "response/session_key" );
+
+				//get response and parse. first check status
+				if( jobStatus == "ERROR" ){
+					//post error to user
+					textMessageDialog = getHtmlText( "Error in netpost. Please try submit again. If error persists contact support. <a href=\"mailto:support@simplifiedsolutionsinc.com?subject=EAGLE-to-3D%20Support\">Contact Support</a>" );
+
+					dlgRedisplay();
+
+					break;
+					}
+				else if( jobStatus == "ACTIVE" || jobStatus == "NOT STARTED" || jobStatus == "not started" ){
+					
+					//sprintf( tempStr, "%s<h2>Request is active. Percent Complete: %s</h2>", tagImgActive, percentComplete);
+					sprintf( tempStr, "<font size=5 color=green>Request is active.</font><BR/><br/><font size=5>Percent Complete: %s%%</font>", percentComplete );
+
+					textMessageDialog = getHtmlText( tempStr );
+
+					}
+				else if( jobStatus == "COMPLETE" ){
+					//set job complete flag
+					jobCompleted = 1;
+
+					//get link from xml response
+					downloadPurchaseUrl = xmltext( postResponse, "response/betaDownloadKey" );
+					stlPurchaseUrl = xmltext( postResponse, "response/betaStlKey" );
+					complete3DDesignUrl = xmltext( postResponse, "response/betaComplete3DDesignKey" );
+
+
+					if( debug ){
+						dlgMessageBox( postResponse );
+						}
+
+
+					if( debug ){
+						dlgMessageBox( stlPurchaseUrl );
+						}
+
+					
+
+					//build image link
+					sprintf( thumbnailImg, "<img src=\"https://www.simplifiedsolutionsinc.com/EMN-EMPAdvancedApp/GetSessionDataFromDBServlet?id=%s&type=jpg\" width=\"300\" alt=\"If Image Missing Re-Generate 3D Data\">", sessionKey);
+
+					sprintf( thumbnailLink, "<a href=\"https://www.simplifiedsolutionsinc.com/EMN-EMPAdvancedApp/GetSessionDataFromDBServlet?id=%s&type=jpg\">Open Larger Thumbnail - Free</a>", sessionKey);
+
+					sprintf( pdf3dLink, "<a href=\"https://www.simplifiedsolutionsinc.com/EMN-EMPAdvancedApp/GetSessionDataFromDBServlet?id=%s&type=pdf\">Click here</a>", sessionKey);
+
+					//links for purchase
+					sprintf( purchaseDownloadLink, "<a href=\"%s\">Click here</a>", downloadPurchaseUrl );
+
+					sprintf( purchaseStlLink, "<a href=\"%s\">Click here</a>", stlPurchaseUrl );
+
+					sprintf( complete3DDesignLink, "<a href=\"%s\">Click here</a>", complete3DDesignUrl );
+
+					if( debug ){
+						dlgMessageBox( purchaseStlLink );
+						}
+
+					/*
+					textMessageDialog_old = getHtmlText( "<h2><b><i>Sending data complete: A session to map your components with our 3D database is ready.</i></b></h2> \
+														The picture shows your board and components that could be mapped automatically. \
+														<font size=4><table border=0 cellpadding=0 cellspacing=0> \
+															<tr> \
+																<td width=\"200\">" + thumbnailImg + "<BR><font color=\"red\">Important:</font> Automatic component mapping works only with the original EAGLE Library. Components shown in <font color=\"red\">red</font> can be mapped manually.</td> \
+																<td><BR>\
+																		&nbsp;&nbsp;&nbsp;&nbsp;<B>" + pdf3dLink + "</B> to open a 3D PDF<br><br> \
+																		&nbsp;&nbsp;&nbsp;&nbsp;<B>" + purchaseDownloadLink + "</B> to purchase the 3D-STEP file<br><br> \
+																		&nbsp;&nbsp;&nbsp;&nbsp;<B>" + purchaseStlLink + "</B> to purchase a physical 3D model (Rapid Prototype)<br><br> \
+																		&nbsp;&nbsp;&nbsp;&nbsp;<B>" + complete3DDesignLink + "</B> to complete the component mapping manually \
+																	<ul> \
+																		<li>Use of our IDF-to-3D tool is free</li> \
+																		<li>Generate a 3D PDF of your 3D Board Assembly at no cost</li> \
+																		<li>Incorporate additional 3D Models to your design by using our IDF-to-3D model library and our 3D STEP Model integration tool</li> \
+																	</ul> \
+																</td> \
+															</tr> \
+														</table></font>" );
+					*/
+
+					textMessageDialog =
+								getHtmlText( "<h2><b><i>Generating data complete: A session to map your components with our 3D database is ready.</i></b></h2> \
+								The picture shows your board and components that could be mapped automatically. \
+								<font size=4><table border=0 cellpadding=0 cellspacing=0> \
+								<tr> \
+								<td width=\"200\">" + thumbnailImg + "<BR><font color=\"red\">Important:</font> Automatic component mapping works only with the original EAGLE Library. Components shown in <font color=\"red\">red</font> can be mapped manually.</td> \
+								<td><BR>\
+								&nbsp;&nbsp;&nbsp;&nbsp;<B>" + complete3DDesignLink + "</B> to complete the component mapping manually \
+								<ul> \
+								<li>Use of our IDF-to-3D tool is free</li> \
+								<li>Generate a 3D PDF of your 3D Board Assembly at no cost</li> \
+								<li>Incorporate additional 3D Models to your design by using our IDF-to-3D model library and 3D STEP Model integration tool</li> \
+								<li>Get a free FITS-OR-NOT 3D Printer Rapid Prototype with every PCB-POOL(R) order</li> \
+								</ul> \
+								&nbsp;&nbsp;&nbsp;&nbsp;If satisfied with your 3D image:<br><br> \
+								&nbsp;&nbsp;&nbsp;&nbsp;<B>" + pdf3dLink + "</B> to open a 3D PDF (Free)<br><br> \
+								&nbsp;&nbsp;&nbsp;&nbsp;<B>" + purchaseDownloadLink + "</B> to purchase the 3D-STEP file<br><br> \
+								&nbsp;&nbsp;&nbsp;&nbsp;<B>" + purchaseStlLink + "</B> to get a free FITS-OR-NOT Prototype with your PCB-POOL(R) order\
+								</td> \
+								</tr> \
+								</table></font>" );
+
+					//update display
+					dlgRedisplay();
+
+					break;
+					}
+				else{
+					textMessageDialog = getHtmlText( "<font color=\"red\">There was an error in your request. Please try submit again. \
+										If error persists contact support. \
+										<a href=\"mailto:support@simplifiedsolutionsinc.com?subject=EAGLE-to-3D%20Support\">Contact Support</a> <BR/>\
+											Error Code:" + neterror() + "</font>" );
+					dlgRedisplay();
+
+					break;
+					}
+
+				//this is neded to update the text display
+				dlgRedisplay();
+
+				}
+			else{
+				//handle error in netpost
+				textMessageDialog = getHtmlText( "We were unable to complete your request at this time. Please try submit again. \
+										If error persists contact support. \
+										<a href=\"mailto:support@simplifiedsolutionsinc.com?subject=EAGLE-to-3D%20Support\">Contact Support</a> <BR/>\
+											Error Code:" + neterror() + "<BR/>Post Response:" + postResponse );
+
+				dlgRedisplay();
+
+				break;
+				}  //end if-else
+			} 
+		else if( i % 3 == 0 ){
+			//try to slow down the loop
+			}
+		else{
+			//do nothing.
+			
+			}//end if-else modulus test
+
+		}  //end for
+		
+
+
+
+		//alert user to job success
+		if( jobCompleted ){
+			dlgMessageBox( "Your job is complete" );
+			}
+		else{
+			dlgMessageBox( "Your job ended in error\n Job Status: " + jobStatus );
+
+			textMessageDialog = getHtmlText( "<font color=\"red\">There was an error in your request. Please try submit again. \
+										If error persists contact support. \
+										<a href=\"mailto:support@simplifiedsolutionsinc.com?subject=EAGLE-to-3D%20Support\">Contact Support</a> <BR/>\
+											Error Code:" + neterror() + "</font>" );
+			//force text view to update
+			dlgRedisplay();
+			}  //end if-else
+
+	}  //end sub
+
+//verifies netget works and gets a valid response
+//0=network conection failed
+//1=network connection was successful
+int verifyNetwork(){
+	string temp;
+
+	//make network request
+	if( netget( temp, service_url ) ){
+		return 1;
+		}
+	else{
+		return 0;
+		}  //end if-else
+	}  //end sub
+
+//make network connection to service url and make sure its working
+int verifyIDFService(){
+	
+	string temp;
+	string serviceStatus;
+	
+	//make network request
+	if( netget( temp, service_url ) ){
+		serviceStatus = xmltext( temp, "response/status" );
+
+		//debug line
+		if( debug ){
+			dlgMessageBox( serviceStatus );
+			}
+	
+		if( serviceStatus == "available" ){
+			return 1;
+			}
+		else{
+			return 0;
+			}  //end if-else on status
+		}
+	else{
+		return 0;
+		}  //end if-else for netget call
+
+	}  //end sub
+//-----------------------------------------------------------------------------
+// main section
+//-----------------------------------------------------------------------------
+
+
+void main(){
+
+	//ulp path. 
+	//dlgMessageBox( argv[0] );
+
+
+	//check to make sure board is loaded
+	if( !board ){
+		dlgMessageBox(usage + "<hr><b>ERROR: No board!</b><p>\nThis program can only work in the layout editor.</p>");
+		exit(-1);
+		}
+
+	//validate connectivity
+	if( !verifyNetwork() ){
+		dlgMessageBox( "<b>ERROR: Network connection failed.</b><p>\nPlease verify your network connection.</p>");
+		exit(-1);
+		}
+
+	//validate system status
+	if( !verifyIDFService() ){
+		dlgMessageBox( "<b>ERROR: The EAGLE to 3D webservice is unavailable.</b><p>\nUnable to connect to EAGLE to 3D web service.\nPlease try again later.</p>");
+		//exit(-1);
+		}
+
+
+
+	//on open load banner and libraries
+	loadBanner();
+
+	loadLibraries();
+
+
+	//analyze board and library to identify and issues that would prevent the successful generation of a emn and emp file
+
+	//set initial text view content
+	textMessageDialog = getHtmlText( tagBanner + " \
+											<table><tr><td colspan=2><font size=\"4\"><b>Sample 3D Output</b> - Click the \"Generate 3D Data\" button to send your data to our IDF-to-3D server.</font></td></tr><tr><td> \
+											<img src=\"https://www.simplifiedsolutionsinc.com/images/3dpcb.jpg\" width=\"300\"></td> \
+											<td><BR><font size=\"4\">We offer:<ul> \
+												<li>One button click automated conversion from EAGLE to a full 3D model</li> \
+												<li>Automated component mapping to thousands of EAGLE library components</li> \
+												<li>Electronic Downloads (STEP Format) and rapid prototypes of your populated 3D Boards</li> \
+												</ul> \
+												</font> \
+											</td></tr>" );
+
+	//show dialog to user
+	int mainDlgResult = dlgDialog( "EAGLE to 3D" ) {
+		//main layout
+		dlgVBoxLayout {
+
+			//set width
+			if( isWindows() ){
+				//windows
+				dlgHBoxLayout dlgSpacing( 800 );  //sets width
+				}
+			else{
+				//mac/linux
+				dlgHBoxLayout dlgSpacing( 850 );  //sets width
+				}  //end if-else
+			
+			//set height and text view
+			dlgHBoxLayout {
+				dlgTextView( textMessageDialog );  //text view. holds html 
+
+				if( isWindows() ){
+					//windows
+					dlgVBoxLayout dlgSpacing( 525 );  //sets height
+					}
+				else{
+					//mac/linux
+					dlgVBoxLayout dlgSpacing( 600 );  //sets height
+					}  //end if-else
+
+				
+				}  //end box layout
+
+			//buttons to submit and exit
+			dlgHBoxLayout {
+				dlgPushButton( "Generate 3D Data" ) {
+
+					//build emn and emp strings
+					//generateEmnEmpFiles();
+
+					//submit data to idf site
+					submitFormData();
+					}  //end button
+				dlgPushButton( "Exit" ) dlgReject();
+				}  //end box layout
+			}  //end v box layout
+		};  //end mainDlgResult
+
+	}  //end main

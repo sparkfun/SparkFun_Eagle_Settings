@@ -43,9 +43,9 @@ Set palette 24 0xFFC0C0C0; #Grey - color used when text is selected (anti palett
 Set color_layer 21 16; #Set tPlace to white
 Set color_layer 22 14; #Set bPlace to yellow
 Set color_layer 51 6; #Set tDocu to mellow yellow
-display none; display 1 16 17 18 19 20 21 22 23 24 45 49 51; display -25 -26 -27 -28;
+display none; display 1 16 17 18 19 20 21 22 23 24 45 51; display -25 -26 -27 -28;
 
-#Assing shortcuts
+#Assign shortcuts
 Assign F8 ratsnest;
 Assign AF8 drc;
 
@@ -64,6 +64,10 @@ Assign AF10 'Grid mm 1 on; Grid alt mm 0.1;';
 SCH:
 Assign F9 'Net';
 Assign AF9 'Label';
+
+Assign F12 'show';
+Assign AF12 'info';
+
 Grid Default;
 Change Width 0.008;
 
