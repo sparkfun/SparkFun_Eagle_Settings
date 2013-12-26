@@ -3,13 +3,14 @@
 # This file can be used to configure the editor windows.
 
 Assign F3 'Delete';
+Assign AF3 'Grid inch 0.001 on; Grid alt inch 0.01;';
 Assign F4 'Name';
 Assign F5 'Value';
 Assign F6 'Smash';
 Assign F7 'Move';
 Assign AF7 'Group';
 Assign F8 'Copy';
-Assign AF3 'Grid inch 0.001 on; Grid alt inch 0.01;';
+Assign F10 'Grid inch 0.05 on; Grid alt inch 0.005;';
 Assign AF10 'Grid mm 1 on; Grid alt mm 0.1;';
 
 Grid inch 0.05 on;
