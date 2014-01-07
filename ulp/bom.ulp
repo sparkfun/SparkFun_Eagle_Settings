@@ -340,6 +340,7 @@ void CollectPartData (string var)
           PartDevice[NumParts] = P.device.name;
           PartPackage[NumParts] = P.device.package.name;
           PartHeadline[NumParts] = P.device.headline;
+          if(strlen(PartHeadline[NumParts]) > 20) PartHeadline[NumParts][20] = 0;
           PartDescription [NumParts] = P.device.description;
           PartValueOn[NumParts] = P.device.value == "On";
           // Zero all strings
