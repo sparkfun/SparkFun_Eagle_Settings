@@ -40,8 +40,17 @@ SET PALETTE BLACK;
 #Layer colors
 Set palette 16 0xFFFFFFFF; #Super white
 Set palette 24 0xFFC0C0C0; #Grey - color used when text is selected (anti palette location 16)
+Set color_layer 1 4; #Set top layer to dark red
+Set color_layer 16 1; #Set bottom layer to dark blue
+Set color_layer 17 2; #Set pads to green
+Set color_layer 18 2; #Set vias to green
+Set color_layer 19 6; #Set unrouted to dark yellow
+Set color_layer 20 15; #Set dimension to light gray
 Set color_layer 21 16; #Set tPlace to white
 Set color_layer 22 14; #Set bPlace to yellow
+Set color_layer 23 15; #Set tOrigins to light gray
+Set color_layer 24 15; #Set bOrigins to light gray
+Set color_layer 45 7; #Set Holes to dark gray
 Set color_layer 51 6; #Set tDocu to mellow yellow
 display none; display 1 16 17 18 19 20 21 22 23 24 45 51; display -25 -26 -27 -28;
 
