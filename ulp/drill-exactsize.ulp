@@ -1,0 +1,44 @@
+// ***** MODIFIED VERSION of CadSoft's drill-aid ULP!!
+// By MadWizard for imagedump script. See www.madwizard.org
+
+
+string cmd = "GRID mm;\nLayer 116 drillImage;\nchange layer 116;\n";
+
+void  center(int x, int y, int drill) {
+
+   real width  = u2mm(drill) / 2;
+   real radius = width / 2 ;
+   string h;
+   sprintf(h, "circle %.3f (%.3f %.3f) (%.3f %.3f) ;\n",
+                  width,
+                  u2mm(x), u2mm(y), u2mm(x) + radius, u2mm(y) );
+   cmd += h;
+   return;
+   }
+
+if (board) board(B) {
+  
+
+   B.holes(L) {
+     center(L.x, L.y, L.drill);
+     }
+   B.elements(E) {
+     E.package.holes(H) {
+       center(H.x, H.y, H.drill);
+       }
+     E.package.contacts(C) {
+       if (C.pad) {
+          center(C.pad.x, C.pad.y, C.pad.drill);
+          }
+       }
+    }
+  B.signals(S) {
+    S.vias(V) {
+       center(V.x, V.y, V.drill);
+       }
+    }
+  exit (cmd);
+ }
+
+else dlgMessageBox("Start this ULP in a Board!", "OK");
+exit (0);

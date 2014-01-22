@@ -1,0 +1,45 @@
+/*
+ *  UNROUTED.ULP
+ *
+ *	simple script to zoom to the first unrouted wire in board editor.
+ *	this might be helpful when searching for tiny left-overs.
+ *
+ *	done by Daniel Mack <daniel@caiaq.de>, http://caiaq.de
+ */
+
+int gridunit;
+
+real u2u(int val) {
+  switch (gridunit) {
+     case GRID_UNIT_MIC  : return u2mic(val);
+     case GRID_UNIT_MM   : return u2mm(val);
+     case GRID_UNIT_MIL  : return u2mil(val);
+     case GRID_UNIT_INCH : return u2inch(val);
+     }
+}
+
+string RunOnExit = "";
+
+if (board) {
+	board(B) {
+		gridunit = (B.grid.unit);
+		B.signals(S) {
+			S.wires(W) {
+				if (W.layer == 19) {
+					real x1 = u2u(W.x1);
+					real x2 = u2u(W.x2);
+					real y1 = u2u(W.y1);
+					real y2 = u2u(W.y2);
+
+					x1 -= (x2 - x1) / 2;
+					x2 += (x2 - x1) / 2;
+					y1 -= (y2 - y1) / 2;
+					y2 += (y2 - y1) / 2;
+					
+					sprintf(RunOnExit, "\nWINDOW (%.6f %.6f) (%.6f %.6f);\n", x1, y1, x2, y2);
+					exit (RunOnExit);
+				}
+			} 
+		}
+	}
+}

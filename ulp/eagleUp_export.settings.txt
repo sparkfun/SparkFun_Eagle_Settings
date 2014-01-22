@@ -1,0 +1,22 @@
+Hello curious. This file contains the user settings of eagleUp for old versions of Eagle. Do not edit by hand.
+1.60
+3
+0
+1
+1
+0
+1
+1
+0
+0xFF6600
+0xFF0033
+  unused setting
+C:/Program Files (x86)/EAGLE-6.4.0/models/
+C:/Program Files/ImageMagick-6.8.7-Q16/convert.exe
+C:/Program Files/ImageMagick-6.8.7-Q16/composite.exe
+del
+/EagleUp/
+121
+122
+0
+1

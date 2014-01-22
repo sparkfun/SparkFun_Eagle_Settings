@@ -1,0 +1,763 @@
+#usage "en:<qt><nobr><b>Import a BitMaP image into an EAGLE drawing</b>"
+       "<p>"
+       "This ULP generates a SCRIPT file that draws rectangles of successional pixels with identical color.<br>"
+       "These rectangles serve as templates in order to draw the image with EAGLE commands like POLYGON, WIRE, CIRCLE, TEXT.</nobr>"
+       "Please note: If the generated rectangles are smaller than the half of the resolution of the output device, "
+       "(depending on the scale factor: screen: pixel, printer: diameter of the laser beam or ink jet dropplet), it is "
+       "not possible to display the result. Therefore use the EAGLE commands mentioned above to reduce the number of "
+       "elements (rectangles). Each element has to be drawn and calculated by the display device driver. The more elements "
+       "the slower the display will be.<br>"
+       "The ULP accepts BitMaP files with a maximum of 256 colors. You are allowed to select a maximum of 32 of them. "
+       "[Scan used colors] detects the used number of colors in the image. You have to reduce them to a maximum of 32 "
+       "in the following dialog.<br>"
+       "In the final dialog you can scale the image. Either in <i>Dots per Inch (DPI)</i>, <i>Pixel</i> in the units Inch, "
+       "Mil, Millimeter, Micron, or as <i>Aspect Ratio</i> (the width of the image in pixels in X) in Inch, Mil, "
+       "Millimeter, Micron. "
+       "In the case of Aspect ratio, please keep in mind that there should not be pixels in a non-selected color on "
+       "the left or right boarder of the image. Otherwise the resulting width of the image is not the same as the calculated one.<br>" 
+       "The start layer for the template is set to 200. Each of the maximum of 32 selected colors will use a separate layer, "
+       "beginning with the start layer. So it is possible to have colored logos in the Schematic or Symbol Editor.<br>"
+       "Reduce the number of colors of an image to two (black/white), if the logo shall be displayed monochrome in one of the copper "
+       "layers. As soon as the image (logo) is drawn with the EAGLE commands (see above) you may delete the template with GROUP DELETE "
+       "and a right mouse click. The layers can be removed with <i>LAYER -number</i> afterwards."
+       "<p>"
+       "<author>Author: support@cadsoft.de</author></qt>"
+       ,
+       "de:<qt><nobr><b>Importiert ein BitMaP-Bild als Vorlage in eine EAGLE-Zeichnung</b>"
+       "<p>"
+       "Das ULP erzeugt eine SCRIPT-Datei, in der zusammenhängende gleichfarbige Pixel als Rechteck generiert werden.<br>"
+       "Diese Rechtecke dienen als Vorlage, um das Bild mit EAGLE-Werkzeugen wie POLYGON, WIRE, CIRLE, TEXT zu definieren.</nobr>"
+       "Bedenken Sie: Wenn die erzeugten Rechtecke kleiner sind als die Hälfte der Auflösung des Ausgabegerätes"
+       "(je nach Skalierungsfaktor: Bildschirm-Pixel, Drucker-Laserstrahlbreite oder Düsendurchmesser), kann das Ergebnis "
+       "nicht dargestellt werden. Definieren Sie deshalb feine Strukturen mit den oben erwähnten Werkzeugen, um die "
+       "Anzahl der Elemente (Rechtecke) zu reduzieren. Jedes Element muss vom Grafikkartentreiber gezeichnet und "
+       "berechnet werden. Bei sehr vielen Elementen wird die Anzeige entsprechend verlangsamt.<br>"
+       "Es werden nur BitMaP-Dateien mit maximal 256 Farben akzeptiert. Davon kann man bis zu 32 Farben auswählen.<br>"
+       "Mit [Scan used colors] können die benutzten Farben im Bild ermittelt werden. Im folgenden Menue muss man sie "
+       "auf maximal 32 reduzieren.<br>"
+       "Im abschliessenden Menue kann die Skalierung gewählt werden. Entweder <i>Dots per Inch (DPI)</i> oder <i>Pixel</i> in "
+       "der Maßeinheit Inch, Mil, Millimeter, Micron oder <i>Aspect Ratio</i> (die Breite des Bildes Pixel in X) in Inch, "
+       "Mil, Millimeter, Micron."
+       "Bei Aspect ratio sollte darauf geachtet werden, dass im Bild links und rechts keine Pixel in einer "
+       "nichtgewählten Farbe vorkommen. Ansonsten stimmt die Breite des Endergebnisses nicht mit der berechneten Breite überein.<br>"
+       "Der Startlayer für die Vorlage ist der Layer 200. Für jede, der bis zu max. 32 gewählten Farben, wird ein neuer Layer, "
+       "beginnend mit dem Sartlayer angelegt. So kann ein Logo im Schaltplan (Symbol) auch farbig definiert werden.<br>"
+       "Reduzieren Sie eine BitMaP auf 2 Farben (schwarz/weiss), wenn das Ergebnis in nur einer Farbe für einen Kupferlayer "
+       "dargestellt werden soll. Ist das Bild (Logo) mit EAGLE-Werkzeugen (siehe oben) definiert, können mit GROUP DELETE und rechter "
+       "Maustaste die 'Rechtecke' wieder gelöscht werden. Die Layer selbst können dann mit <i>LAYER -nummer</i> entfernt werden."
+       "<p>"
+       "<author>Author: support@cadsoft.de</author></qt>"
+
+// THIS PROGRAM IS PROVIDED AS IS AND WITHOUT WARRANTY OF ANY KIND, EXPRESSED OR IMPLIED
+
+
+//  1.0.3 - 2006.05.11 *** corrected for 4 bit (16 colors) ***  alf@cadsoft.de
+//                         only the first 4 of 16 colors was generated
+//                         set cselmax to maximal included colors of BitMaP
+//
+//  1.0.4 - 2007.03.30 --- Coral Draw sets wrong Byte Address Range, check length with address range.
+//
+
+string Version = "1.0.4";
+
+string script_path;
+string bmpcolor[];
+string bmps[];
+
+string run_info = " ";
+string fileName;
+int nBytes = 0;                 // count bytes of file (fileName)
+int ColorBits = 0;              // used bits for color
+int AdrStart, AdrEnd = 0;       // Start & End of BITMAP-Data
+int length = 0;                 // length of bmp-Data
+int Byte4Group = 0;             // bmp-Data organized as 4-byte groups
+int Layer = 200;                // 1st used layer
+real xScale = 1;                // scale x
+real yScale = 1;                // scale y
+int X = 0;                      // count pixels x
+int Y = 0;                      // count pixels y
+string xy = "";
+int colorscan = 0;              // flag for color scanning
+int cselmax = 32;               // max 32 colors selectable
+int Result = 0;
+
+real Offset  = .5;              // offset Wire width
+
+int mBit[];                     // bit line for operating
+
+string grid[] = { "INCH",       // grid units
+                  "MIL",
+                  "MM",
+                  "MIC"
+                };
+int unit = 1;                   // default unit = mil
+int scaled = 1;                 // flag for DPI Scale Ratio
+real vmin[] = { 0.00001, 0.001, 0.0001, 0.1 };
+real vmax[] = { 30.0, 3000.0, 800.0, 800000.0 } ;
+
+string Grid = grid[unit];          // default grid
+
+   // get parameter PDI, Scale, Aspect Ratio, mic, mm, mil INCH ...
+   string menuedlg[] = {
+           "<b>D</b>ots <b>P</b>er <b>I</b>NCH",
+           "<b>Scale</b> factor for a pixel",
+           "Aspect/Ratio <b>m</b>"
+           } ;
+   string menuval0[] = {
+           "&Value between 1 and 10000 dots",
+           "&Value between 0.01 and 30.0 Inch",
+           "&Value between 0.01 and 30.0 Inch"
+           };
+
+   string menuval1[] = {
+           "&Value between 1 and 10000 dots",
+           "&Value between 0.001 and 3000.0 mil",
+           "&Value between 0.001 and 3000.0 mil"
+           };
+   string menuval2[] = {
+           "&Value between 1 and 10000 dots",
+           "&Value between 0.0001 and 800.0 mm",
+           "&Value between 0.0001 and 800.0 mm"
+           };
+   string menuval3[] = {
+           "&Value between 1 and 10000 dots",
+           "&Value between 0.1 and 800000.0 micron",
+           "&Value between 0.1 and 800000.0 micron"
+           };
+string menulbl = menuedlg[1];
+string menuinfo = menuval1[1];
+string ratiologo ;
+   
+
+// table of used colors in BitMaP
+int colorUsed[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                  };
+
+int colorSelect[] ;
+char  c[];                      // the file as Byte-Array
+
+// set / clear all colorUsed flags
+void setall(int set) {
+   for(int n = 0; n < pow(2, ColorBits); n++) {
+       colorUsed[n] = set;
+   }
+   return;
+}
+
+void ScriptLine(int Line) {
+   // *** corrected for 4 bit (16 colors) *** 2006.05.11 alf@cadsoft.de
+   for(int cs = 0; cs < cselmax; cs++) {          // extract max 32 colors
+      sprintf(run_info, "%d Line %d Color #%d ", Y, Line, cs);
+      dlgRedisplay();
+      if(colorSelect[cs] > -1) {                  // -1 color not used
+         int lineColor = colorSelect[cs];         // extraction color
+         int line = 0;
+         printf("change layer %d;\n", Layer + cs);
+         for(int z = 0; z < X; z++) {
+            if(mBit[z] == lineColor) {           // if color used
+               if(line == 0) {                   // start of line in script (rectangle)
+                  printf("RECT (%.5f ", (z - Offset) * xScale);
+                  printf("%.5f)", (Line - Offset) * yScale);
+                  line = 1;
+               }
+            }
+            else {
+               if(line == 1) {
+                  printf( "(%.5f ", (z - Offset) * xScale);
+                  // end of line in script (rectangle)
+                  printf( "%.5f);\n", (Line + Offset) * yScale);
+                  line = 0;
+               }
+            }
+         }
+         if(line == 1) {
+            printf( "(%.5f ", (z - Offset) * xScale);
+            // end of line in script(rectangle)
+            printf( "%.5f);\n", (Line + Offset) * yScale);
+            line = 0;
+         }
+      }
+   }
+   return;
+}
+
+// Generate Script from BitMaP
+void GenScript(void) {
+   int xByte = 4 * Byte4Group;                      // organised by groups of 4 bytes
+   int bmpBits;
+
+   for(int yRead = 0; yRead < Y; yRead++) {         // counter for  lines / Y
+      for(int xRead = 0; xRead < xByte; xRead ++) {
+         bmpBits = c[AdrStart + yRead * xByte + xRead];
+
+         switch (ColorBits) {
+            case  1 :  for(int bitcnt = 7; bitcnt > -1; bitcnt--) {
+                          mBit[(xRead * 8) + (7 - bitcnt)] = bmpBits;
+                          mBit[(xRead * 8) + (7 - bitcnt)] >>= bitcnt;
+                          mBit[(xRead * 8) + (7 - bitcnt)] &= 0X1;
+                       }
+                       break;
+
+            case  4 :  mBit[xRead * 2 ] = bmpBits;
+                       mBit[xRead * 2 + 1] = bmpBits;
+                       mBit[xRead * 2 ] >>= 4;
+                       mBit[xRead * 2 + 1] &= 0x0f;
+                       break;
+
+            case  8 :  mBit[xRead] = bmpBits;
+                       break;
+         }
+      }
+
+      if(colorscan) {
+         for(int z = 0; z < X; z++) {
+            colorUsed[mBit[z]]++;          // set flag for used color
+         }
+      }
+      else {
+         ScriptLine(yRead);                // generate Eagle Script line
+      }
+   }
+   return;
+}
+
+// bmp file info
+string bmpDaten(void) {                    // diagnostics
+   string st = "";
+   string cmd = "";
+   printf( "BitMaP Start \t = %d\n", AdrStart);
+   cmd = st;
+   printf( "BitMaP End \t = %d\n", AdrEnd);
+   cmd += st;
+   printf( "BitMaP length \t = %d\n", length);
+   cmd += st;
+   printf( "high / pixel - Y \t = %d\n", Y);
+   cmd += st;
+   printf( "wide / pixel - X \t = %d\n", X);
+   cmd += st;
+   printf( "4-Byte Group(s) \t = %d\n", Byte4Group);
+   cmd += st;
+   printf( "Bits / Color \t = %d  (Colors %.0f)\n", ColorBits, pow(2, ColorBits));
+   cmd += st;
+   printf( "File length \t = %d\n", nBytes);
+   cmd += st;
+   return cmd;
+}
+
+// Select menu for 2 color BitMaP
+void Cselect2(void) {
+   Result = dlgDialog("Select used colors in " + fileName) {
+      dlgHBoxLayout {
+         dlgStretch(0);
+         dlgSpacing(3);
+         for(int colum = 0 ; colum < 2; colum++) {
+            dlgCheckBox("", colorUsed[colum]);
+         }
+         dlgSpacing(6);
+         dlgStretch(1);
+      }
+      dlgHBoxLayout {
+         dlgSpacing(3);
+         dlgStretch(0);
+         dlgLabel("<img src=import-bmp-c2.bmp>");
+         dlgStretch(1);   // stretch bottom
+      }
+      dlgStretch(0);
+      dlgSpacing(20);
+      dlgLabel("<b> Select up to 2 colors </b>");
+      dlgStretch(0);
+      dlgHBoxLayout {
+         dlgPushButton("+OK") dlgAccept();
+         dlgPushButton("-Cancel") dlgReject();
+         dlgStretch(1);
+         dlgPushButton("&Set all") setall(1);
+         dlgPushButton("&Clear all") setall(0);
+      }
+      dlgStretch(1);
+   };
+   if (Result == 0) exit (0);
+   return;
+}
+
+// Select menu for 16 color BitMaP
+void Cselect16(void) {
+   Result = dlgDialog("Select used colors" + fileName) {
+      dlgStretch(0);
+      dlgHBoxLayout {
+         dlgStretch(0);
+         dlgSpacing(3);
+         for(int colum = 0 ; colum < 16; colum++) {
+            dlgCheckBox("", colorUsed[colum]);
+         }
+         dlgSpacing(6);
+         dlgStretch(1);
+      }
+      dlgHBoxLayout {
+         dlgSpacing(3);
+         dlgStretch(0);
+         dlgLabel("<img src=import-bmp-c16.bmp>");
+         dlgStretch(1);          // stretch bottom
+      }
+      dlgStretch(0);
+      dlgSpacing(20);
+      dlgLabel("<b> Select up to 16 colors </b>");
+      dlgStretch(0);
+      dlgHBoxLayout {
+         dlgPushButton("+OK") dlgAccept();
+         dlgPushButton("-Cancel") dlgReject();
+         dlgStretch(1);
+         dlgPushButton("&set all") { setall(1); dlgRedisplay();}
+         dlgPushButton("&clear all") { setall(0); dlgRedisplay();}
+      }
+      dlgStretch(1);
+   };
+   if (Result == 0) exit (0);
+   return;
+}
+
+// Select menu for 256 color BitMaP
+void Cselect256(void) {
+//   dlgMessageBox("please be patient\nif you have a slow computer!", "OK");
+
+   Result = dlgDialog("Select used colors " + fileName) {
+      dlgVBoxLayout {
+         // ********* 550 DO NOT CHANGE THIS VALUE *********
+         dlgHBoxLayout dlgSpacing(550);
+         // ********* 550 DO NOT CHANGE THIS VALUE *********
+         for(int row = 0 ; row < 8; row++) {
+            dlgHBoxLayout {
+               dlgVBoxLayout {
+                  dlgStretch(0);
+                  dlgHBoxLayout {
+                     dlgStretch(0);
+                     dlgSpacing(3);
+                     for(int colum = 0 ; colum < 32; colum++) {
+                        dlgCheckBox("", colorUsed[row * 32 + colum]);
+                     }
+                     dlgSpacing(6);
+                     dlgStretch(1);
+                  }
+                  dlgHBoxLayout {
+                     dlgSpacing(3);
+                     dlgStretch(0);
+                     dlgLabel(bmps[row]);
+                     dlgStretch(1);
+                  }
+               }
+               dlgStretch(1);   // stretch right
+            }
+            dlgStretch(1);   // stretch bottom
+         }
+         dlgStretch(1);
+      }
+      dlgVBoxLayout {
+         dlgStretch(0);
+         dlgSpacing(20);
+         string hc;
+         sprintf( hc, "<b> Select up to %d colors </b>", cselmax);
+         dlgLabel(hc);
+         dlgStretch(0);
+         dlgHBoxLayout {
+            dlgStretch(0);
+            dlgPushButton("+OK") dlgAccept();
+            dlgStretch(0);
+            dlgPushButton("-Cancel") dlgReject();
+            dlgStretch(1);
+            dlgPushButton("&set all") setall(1);
+            dlgStretch(0);
+            dlgPushButton("&clear all") setall(0);
+            dlgStretch(0);
+         }
+         dlgStretch(1);
+      }
+      dlgStretch(1);
+   };
+   if (Result == 0) exit (0);
+   return;
+}
+
+// select colors
+int selectColors(void) {
+   switch (ColorBits) {
+      case 1 :  cselmax = 2;         // 2006.05.11 set max color for 2 colors
+                Cselect2();
+                break;
+      case 4 :  cselmax = 16;        // 2006.05.11 set max color for 16 colors
+                Cselect16();
+                break;
+      case 8 :  Cselect256();
+                break;
+   }
+   for(int n = 0; n < cselmax; n++) {
+      colorSelect[n] = -1;        // reset selected colors
+   }
+   int cs;
+   for(int s = 0; s < 256; s++) {
+      if(colorUsed[s]) {
+         colorSelect[cs] = s;
+         cs++;
+      }
+   }
+   return cs;
+}
+
+// select colors by scan array
+void selectMenue() {
+   int cs;
+   do {
+      cs = selectColors();
+      string hx;
+      if (cs > cselmax) {
+         sprintf( hx, "Do not use more than %d colors!", cselmax);
+         dlgMessageBox(hx, "OK");
+      }
+      if (cs < 1) {
+         sprintf( hx, "No colors selected!");
+         cs = 1;
+         if (dlgMessageBox(hx, "OK", "Cancel") != 0) break;
+      }
+   } while (cs > cselmax || cs == 0);
+   return;
+}
+
+// header from Script, define Layer
+void scriptheader(void) {
+   printf("# generated with %s %s\n", argv[0], Version);
+   printf("# from %s\n", fileName);
+   printf("Grid %s %.6f ON;\n", Grid, xScale);
+
+   for(int cs = 0; cs < cselmax; cs++) {          // max 32 color extract
+      if(colorSelect[cs] > -1) {
+         if(Layer + cs > 99){                     // user defined layer
+            printf( "LAYER %d %dbmp;\n", Layer + cs, Layer + cs);
+            printf( "SET FILL_LAYER %d 10;\n", Layer + cs);
+            printf( "SET COLOR_LAYER %d %d;\n", Layer + cs, cs + 1);
+         }
+      }
+   }
+   printf( "CHANGE LAYER %d;\n", Layer);
+   printf("SET UNDO_LOG OFF;\n");
+   return;
+}
+
+// get flag for scan colors
+int scan(void) {
+   if (ColorBits == 1) return 0;
+   return (dlgDialog(filename(argv[0])) {
+      string st;
+      sprintf(st, "<nobr><b>%s</b>:<p>is a %.0f color BitMaP : ist eine %.0f-Farben-BitMaP<p></nobr>", fileName, pow(2, ColorBits), pow(2, ColorBits));
+      dlgHBoxLayout {
+         dlgStretch(0);
+         dlgVBoxLayout {
+            dlgGroup("Info") {
+               dlgLabel(st);
+               dlgSpacing(10);
+               dlgLabel(bmpcolor[ColorBits]);
+            }
+            dlgLabel(" ULP-Version " + Version);
+            dlgGroup("") {
+               dlgStretch(1);
+               dlgHBoxLayout {
+                  dlgPushButton("+Scan used colors") dlgAccept();
+                  dlgStretch(1);
+                  dlgPushButton("-No scan") dlgReject();
+                  dlgStretch(1);
+                  dlgPushButton("Cancel") { dlgReject(); exit(0); }
+               }
+               dlgStretch(0);
+            }
+            dlgStretch(1);
+         }
+         dlgStretch(1);
+      }
+      dlgStretch(1);
+   } );
+}
+
+void colors24(void) {
+  string st = "bmp file contains more than 256 colors, reduce colors before use.\n\n"
+   + "Die benutzte Anzahl der Farben in der bmp-Datei ist groesser 256.\n"
+   + "Verringern Sie zuerst die Anzahl der Farben in der bmp-Datei.\n\n";
+  dlgMessageBox(st, "&OK");
+  return;
+}
+
+void menuchange(void) {
+   menulbl = menuedlg[scaled];
+   switch (scaled) {
+      case 0 : ratiologo = "<img src=import-bmp-dpi.bmp>";
+            break;
+      case 1 : ratiologo = "<img src=import-bmp-scale.bmp>";
+            break;
+      case 2 : ratiologo = "<img src=import-bmp-ratio.bmp>";
+            break;
+   }
+   
+   switch (unit) {
+      case 0 : menuinfo = menuval0[scaled];
+            break;
+      case 1 : menuinfo = menuval1[scaled];
+            break;
+      case 2 : menuinfo = menuval2[scaled];
+            break;
+      case 3 : menuinfo = menuval3[scaled];
+            break;
+   }
+   return ;
+}
+
+//---------------------------------
+void set_scale(void) {
+   switch(scaled) {
+       case 0 : Grid = grid[0];
+                yScale = 1 / xScale;        // Dots Per Inch
+                xScale = yScale;
+                break;
+
+       case 1 : Grid = Grid = grid[unit];
+                yScale = xScale;
+                break;
+
+       case 2 : Grid = Grid = grid[unit];
+                yScale = xScale / X;        // Aspect Ratio = Width / Pixel X
+                xScale = yScale;
+                break;
+   }
+   return;
+}
+
+
+void imp_bmp(void) {
+   colorscan = 0;                           // reset scanning mode
+   menuinfo = "Dot scale";
+   scriptheader();
+   GenScript();                             // generate script string
+
+   printf("SET UNDO_LOG ON;\n");
+   printf("WINDOW FIT;\n");
+   printf( "Change Size %.3f;\n", yScale * 2);
+   printf("CHANGE FONT VECTOR;\n");
+   printf( "TEXT '" + fileName + "' (0 %.3f);\n",  -5 * yScale );
+   return;
+}
+
+
+void runscript(void) {
+  string script;
+  int s = fileread(script, script_path + "bmp.scr");
+  Result = dlgDialog("Accept Script?") {
+     dlgHBoxLayout dlgSpacing(300);
+     dlgHBoxLayout {
+        dlgVBoxLayout dlgSpacing(300);
+        dlgTextEdit(script);
+     }
+     dlgLabel(" ULP-Version " + Version);
+     dlgHBoxLayout {
+        dlgStretch(0);
+        dlgPushButton("+Run script") dlgAccept();
+        dlgStretch(1);
+        dlgPushButton("-Cancel") dlgReject();
+        dlgStretch(0);
+     }
+  };
+
+  if (Result == 1) exit ("script '" + script_path + "bmp.scr'");
+  else exit (0);
+}
+
+
+void showbmp() {
+  if ( X < 1000 && Y < 1000) {
+     dlgMessageBox("<qt><nobr>File:&nbsp;'" + fileName + "'<br><img src=\"" + fileName + "\"></nobr></qt>", "OK");
+  }
+  else dlgMessageBox("The BMP-File ist to big to print complete on screen!", "OK");
+  return;
+}
+
+
+if (schematic) {
+  schematic(S) {
+    script_path = filedir(S.name);
+  }
+}
+if (board) {
+  board(B) {
+    script_path = filedir(B.name);
+  }
+}
+if (library) {
+  library(L) {
+    script_path = filedir(L.name);
+  }
+}
+
+
+int check_max(void) {
+  if (X * xScale > vmax[unit] || Y * yScale > vmax[unit]) {
+    string e;
+    sprintf(e, "The Value of X (%.4f) or Y (%.4f) is grater then EAGLE maximum coordinate range %.4f %s", X * xScale, Y * yScale, vmax[unit], grid[unit]);
+    dlgMessageBox(e, "OK");
+    return 0;
+  }
+  return 1;
+}
+
+// ***************** main ****************
+dlgMessageBox(usage, "OK");
+
+void main(void) {
+   ratiologo = "<img src=import-bmp-scale.bmp>";
+   
+   bmpcolor[1] = "<img src=import-bmp-c2.bmp>";
+   bmpcolor[4] = "<img src=import-bmp-c16.bmp>";
+   bmpcolor[8] = "<img src=import-bmp-c256.bmp>";
+   
+   bmps[0] = "<img src=import-bmp-c256-0.bmp>";
+   bmps[1] = "<img src=import-bmp-c256-1.bmp>";
+   bmps[2] = "<img src=import-bmp-c256-2.bmp>";
+   bmps[3] = "<img src=import-bmp-c256-3.bmp>",
+   bmps[4] = "<img src=import-bmp-c256-4.bmp>";
+   bmps[5] = "<img src=import-bmp-c256-5.bmp>";
+   bmps[6] = "<img src=import-bmp-c256-6.bmp>";
+   bmps[7] = "<img src=import-bmp-c256-7.bmp>";
+
+   fileName = dlgFileOpen("Select a bmp file", "", "*.bmp");
+   if (fileName == "") exit (0);
+   run_info = "Import File : " + filename(fileName);
+   nBytes = fileread(c, fileName);              // read file in array
+
+   // up to 31 bytes - not all used
+   if(c[0] != 'B') {
+      dlgMessageBox(fileName + ":\nis not a bmp file.\n\nist keine bmp-Datei.", "OK");
+      exit(0);
+   }
+   if(c[1] != 'M') {
+      dlgMessageBox(fileName + ":\nis not a bmp file.\n\nist keine bmp-Datei.", "OK");
+      exit(0);
+   }
+   if(c[21] > 0) {
+      dlgMessageBox(fileName + ":\nToo many pixels in x direction\n"
+                             + "\nAnzahl der Pixel in X zu gross\n", "OK");
+      exit (0);
+   }
+   if(c[25] > 0) {
+      dlgMessageBox(fileName + ":\nToo many pixels y direction\n"
+                             + "\nAnzahl der Pixel in Y zu gross\n", "OK");
+      exit (0);
+   }
+                                    // case 6 TO 9, 14 TO 17  not used
+
+   ColorBits = c[28];               // counter of ColorBits
+
+   if(ColorBits > 8) {
+      colors24();                   // to many colors, break
+      exit(0);
+   }
+
+   AdrEnd  = c[2] + c[3]  * 256 + c[4]  * 256 * 256 +  c[5] * 256 * 256 * 256;
+   AdrStart = c[10]+ c[11] * 256 + c[12] * 256 * 256 + c[13] * 256 * 256 * 256;
+   X = c[18] + c[19] * 256 + c[20] * 65536 + c[21] * 256 * 256 * 256;
+   Y = c[22] + c[23] * 256 + c[24] * 65536 + c[25] * 256 * 256 * 256;
+   sprintf(xy, " X = %5d Pixel\n Y = %5d Pixel", X, Y);
+
+   length = AdrEnd - AdrStart;              // BitMaP length
+   Byte4Group = length / Y / 4;
+
+   /*** 2007.03.30 Coral-Draw sets wrong address range in Byte upper Byte 18 (22 = $14) ***/
+   if (X > length || Y > length) {  
+     dlgMessageBox("!BitMaP Format Error in Adress-Range (Byte 18+19+20 and 22+23+24) from:\n" + fileName + 
+                   "\n\nCheck this bytes or load the BMP-File in Windows Paint-Brush and save it.",
+                   "OK");
+     exit(-1);
+   }
+
+   if(scan()) {                             // first scan used colors
+      colorscan = 1;
+      GenScript();
+   }
+
+   selectMenue();
+
+   //---------------------------------
+   int d = 1;
+   while(d) {
+      dlgDialog("Info "+ fileName) {
+         dlgLabel(" ULP-Version " + Version);
+         dlgHBoxLayout {
+            dlgVBoxLayout {
+               dlgGroup("File data") {
+                  dlgLabel(xy, 1);
+               }
+               dlgLabel(ratiologo, 1);
+               dlgStretch(1);
+            }
+            dlgVBoxLayout {
+               dlgGroup("Format") {
+                  dlgRadioButton("&DPI", scaled) { unit = 0; menuchange(); }
+                  dlgRadioButton("&Scaled", scaled) {menuchange(); }
+                  dlgRadioButton("&Aspect/Ratio m ", scaled) { menuchange(); }
+               }
+               dlgGroup("Unit") {
+                  dlgRadioButton("&Inch", unit) { menuchange(); dlgRedisplay();}
+                  dlgRadioButton("Mi&l", unit) { if ( scaled == 0) scaled = 1; menuchange(); }
+                  dlgRadioButton("&MM", unit) {  if ( scaled == 0) scaled = 1; menuchange(); }
+                  dlgRadioButton("Mi&cron", unit) {  if ( scaled == 0) scaled = 1; menuchange(); }
+               }
+               dlgPushButton("S&elected colors") selectMenue();
+               dlgStretch(1);
+            }
+         }
+         dlgHBoxLayout {
+            dlgVBoxLayout {
+               dlgLabel(menulbl, 1);
+               dlgLabel(menuinfo, 1);
+               dlgHBoxLayout {
+                  dlgRealEdit(xScale, vmin[unit], vmax[unit]);
+                  dlgSpacing(100);
+               }
+               dlgSpacing(10);
+               dlgLabel("Choose start layer for &1st selected color");
+               dlgHBoxLayout {
+                  dlgSpinBox(Layer, 1, 255);
+                  dlgSpacing(100);
+               }
+            }
+            dlgStretch(1);
+         }
+         dlgStretch(1);
+         dlgLabel(run_info, 1);
+         dlgHBoxLayout {
+            dlgPushButton("+OK") {
+               set_scale();
+               if (check_max()) {   // check of maximum EAGLE coodinates
+                  dlgAccept();
+                  output(script_path + "bmp.scr", "wtD") {
+                     d = 0;
+                     imp_bmp();
+                  }
+                  runscript();
+               }
+            }
+         dlgStretch(1);
+         dlgPushButton("-Cancel") exit(0);
+         dlgPushButton("show &BitMaP") showbmp();
+         }
+      };
+   }
+}
+

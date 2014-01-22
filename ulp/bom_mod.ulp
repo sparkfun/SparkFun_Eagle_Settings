@@ -1,0 +1,859 @@
+#require 4.1105
+
+#usage "en: <b>Export a Bill Of Material</b>\n"
+           "<p>"
+           "Generates a project's <i>Bill Of Material</i>."
+           "<p>"
+           "A database with additional information like order codes, manufacturers "
+           "or prices can be created and managed."
+           "<p>"
+           "<author>Author: support@cadsoft.de</author>",
+       "de: <b>Stückliste exportieren</b>\n"
+           "<p>"
+           "Erzeugt die <i>Stückliste</i> (Bill Of Material) eines Projekts."
+           "<p>"
+           "Eine Datenbank mit zusätzlichen Informationen wie Bestellnummern, Herstellern "
+           "oder Preisen kann angelegt und verwaltet werden."
+           "<p>"
+           "<author>Autor: support@cadsoft.de</author>"
+
+// THIS PROGRAM IS PROVIDED AS IS AND WITHOUT WARRANTY OF ANY KIND, EXPRESSED OR IMPLIED
+
+string HelpTextEN =
+  "<b>How to generate the Bill Of Material</b>\n"
+  "<p>\n"
+  "<b>List type</b>\n"
+  "<p>\n"
+  "The <i>Bill Of Material</i> can be generated either as a list\n"
+  "of parts (where every part is listed on a line of its own),\n"
+  "or as a list of values, where all parts with the same value are grouped\n"
+  "together in one line. Use the <b><u>P</u>arts</b> and <b><u>V</u>alues</b>\n"
+  "radio buttons to select the list type.\n"
+  "<p>\n"
+  "<b>Output format</b>\n"
+  "<p>\n"
+  "Choose between pure ASCII <b><u>T</u>ext</b> format or <b><u>H</u>TML</b>.\n"
+  "<p>\n"
+  "<b>Database</b>\n"
+  "<p>\n"
+  "You can pull in additional information about the used parts by loading\n"
+  "a database file with the <b><u>L</u>oad</b> button.\n"
+  "<p>\n"
+  "A database file must consist of lines of text, each of which contains\n"
+  "one record consisting of CSV (<u>C</u>omma <u>S</u>eparated <u>V</u>alues)\n"
+  "or TSV (<u>T</u>ab <u>S</u>eparated <u>V</u>alues) data.\n"
+  "The very first line must contain a \"header\", which defines a unique name for\n"
+  "each column, and the first column of every following line must contain\n"
+  "a unique (non-empty) key for this record.\n"
+  "<p>\n"
+  "An example for a valid database file would be:\n"
+  "<pre>\n"
+  "Key              Manufacturer       Order Code Price\n"
+  "74LS00N          Texas Instruments  123-456    0.20\n"
+  "R-EU_0204/5:4k7  Somebody           RES4k7     0.10\n"
+  "</pre>\n"
+  "Note that the columns are separated by a <b>tab</b> character (you may also\n"
+  "use a semicolon (';') to separate the columns, but then you will have to make sure\n"
+  "none of the data items contains a semicolon).\n"
+  "The keys for looking up records in the database are built from the\n"
+  "parts' values. If a part's device has defined \"value on\" it means that\n"
+  "the user needs to specify a particular value for this part, as for\n"
+  "example with a resistor. In such a case the key consists of the device\n"
+  "name and the user defined value, separated by a colon (':'). If the\n"
+  "device has \"value off\", only the device name is used as key (if the\n"
+  "user has edited the value of such a part and insisted on changing\n"
+  "it, the edited value will be used).\n"
+  "<p>\n"
+  "<b>Creating a new database</b>\n"
+  "<p>\n"
+  "Click on the <b><u>N</u>ew</b> button to create a new database.\n"
+  "You will get a dialog in which you can define the names of the column headers\n"
+  "for your new database. The first column always contains the key for database\n"
+  "lookups and can't be deleted (you can edit it, though, to give it a different\n"
+  "name than the default \"Key\"). This first column will not be visible in the\n"
+  "generated list, so you don't really need to worry about it.\n"
+  "<p>\n"
+  "<b>Editing the database</b>\n"
+  "<p>\n"
+  "If you have loaded a database you can either double click on a line\n"
+  "in the list, or select a line and press Enter (or click on the <b>Edit</b>\n"
+  "button) to bring up a dialog in which you can edit the database entry\n"
+  "for this part. If the database has been modified you will be asked if\n"
+  "you want to save it before leaving the program or loading a new database.\n"
+  "<p>\n"
+  "<b>Viewing the output</b>\n"
+  "<p>\n"
+  "Click on the <b>Vie<u>w</u></b> button to get a preview of the list output.\n"
+  "<p>\n"
+  "<b>Saving the list</b>\n"
+  "<p>\n"
+  "Click on the <b><u>S</u>ave</b> button to save the list to disk.\n"
+  ;
+
+string HelpTextDE =
+  "<b>Erzeugen der Stückliste</b>\n"
+  "<p>\n"
+  "<b>Listen-Typ</b>\n"
+  "<p>\n"
+  "Die <i>Stückliste</i> kann entweder als Liste der Bauteile generiert werden\n"
+  "(wobei jedes Bauteil in einer eigenen Zeile aufgeführt wird),\n"
+  "oder als Liste der Werte, wobei alle Bauteile mit dem gleichen Wert in einer Zeile\n"
+  "zusammengefasst werden. Mit den Radio-Buttons <b><u>B</u>auteile</b> und <b><u>W</u>erte</b>\n"
+  "kann zwischen den beiden Listen-Typen gewählt werden.\n"
+  "<p>\n"
+  "<b>Ausgabeformat</b>\n"
+  "<p>\n"
+  "Wählen Sie zwischen reinem ASCII-<b><u>T</u>ext</b> oder <b><u>H</u>TML</b>-Format.\n"
+  "<p>\n"
+  "<b>Datenbank</b>\n"
+  "<p>\n"
+  "Mit dem <b><u>L</u>oad</b>-Button können Sie eine Datenbankdatei mit zusätzlichen\n"
+  "Informationen über die Bauteile laden.\n"
+  "<p>\n"
+  "Eine Datenbankdatei besteht aus Textzeilen, von denen jede einen Datensatz bestehend\n"
+  "aus CSV (<u>C</u>omma <u>S</u>eparated <u>V</u>alues) oder\n"
+  "TSV (<u>T</u>ab <u>S</u>eparated <u>V</u>alues) Daten enthält.\n"
+  "Die erste Zeile muß eine Titelzeile enthalten, welche einen eindeutigen Namen\n"
+  "für jede Spalte definiert, und die erste Spalte jeder folgenden Zeile muß einen eindeutigen\n"
+  "(nicht leeren) Schlüssel für diesen Datensatz enthalten.\n"
+  "<p>\n"
+  "Beispiel für eine gültige Datenbankdatei:\n"
+  "<pre>\n"
+  "Key              Hersteller         Best.-Nr.  Preis\n"
+  "74LS00N          Texas Instruments  123-456    0.20\n"
+  "R-EU_0204/5:4k7  Somebody           RES4k7     0.10\n"
+  "</pre>\n"
+  "Beachten Sie, daß die Spalten durch <b>Tabulator</b>-Zeichen getrennt sind (Sie können\n"
+  "auch das Semikolon-Zeichen (';') als Trennzeichen verwenden, wobei Sie dann aber sicherstellen\n"
+  "müssen, daß keines der Datenfelder ein Semikolon enthält).\n"
+  "Die Schlüssel für die Suche nach Datensätzen in der Datenbank werden aus den Werten der\n"
+  "Bauteile gebildet. Hat das Device eines Bauteils \"value on\" gesetzt, so bedeutet dies, daß\n"
+  "der Benutzer einen individuellen Wert für dieses Bauteil (zum Beispiel einen Widerstand)\n"
+  "angeben muß. In einem solchen Fall besteht der Schlüssel aus dem Device-Namen und dem vom\n"
+  "Benutzer angegebenen Wert, getrennt durch einen Doppelpunkt (':'). Hat das\n"
+  "Device \"value off\", so wird nur der Name des Devices als Schlüssel genommen (hat der\n"
+  "Benutzer den Wert eines solchen Bauteils editiert und darauf bestanden, ihn zu verändern,\n"
+  "so wird der veränderte Wert genommen).\n"
+  "<p>\n"
+  "<b>Neue Datenbank anlegen</b>\n"
+  "<p>\n"
+  "Klicken Sie auf <b><u>N</u>eu</b> um eine neue Datenbank anzulegen.\n"
+  "In einem Dialog können Sie dann die Namen der Datenfelder Ihrer neuen Datenbank\n"
+  "festlegen. Das erste Feld enthält immer den Schlüssel für den Datenbank-Zugriff\n"
+  "und kann nicht gelöscht werden (es kann aber editiert werden um ihm einen anderen Namen\n"
+  "als den Standardwert \"Key\" zu geben). Dieses erste Feld wird in der generierten Liste\n"
+  "nicht sichtbar sein, Sie brauchen sich also keine Gedanken darüber zu machen.\n"
+  "<p>\n"
+  "<b>Bearbeiten der Datenbank</b>\n"
+  "<p>\n"
+  "Wenn Sie eine Datenbank geladen haben können Sie entweder auf eine Zeile in der\n"
+  "Liste doppelklicken, oder eine Zeile auswählen und die Eingabetaste drücken (oder auf <b>Bearbeiten</b>\n"
+  "klicken) um einen Dialog zu erhalten in dem Sie den Datenbank-Eintrag für dieses Bauteil\n"
+  "bearbeiten können. Wurde die Datenbank verändert so werden Sie vor dem Verlassen des Programms\n"
+  "oder vor dem Laden einer neuen Datenbank gefragt, ob Sie diese abspeichern wollen.\n"
+  "<p>\n"
+  "<b>Betrachten der Ausgabe</b>\n"
+  "<p>\n"
+  "Klicken Sie auf <b><u>V</u>orschau</b> um eine Vorschau der Ausgabe zu erhalten.\n"
+  "<p>\n"
+  "<b>Speichern der Liste</b>\n"
+  "<p>\n"
+  "Klicken Sie auf <b><u>S</u>peichern</b> um die Liste abzuspeichern.\n"
+  ;
+
+string I18N[] = {
+  "en\v"
+  "de\v"
+  ,
+  "<hr><b>ERROR: No schematic!</b><p>\nThis program can only work in the schematic editor.\v"
+  "<hr><b>FEHLER: Kein Schaltplan!</b><p>\nDieses Programm kann nur in einem Schaltplan verwendet werden.\v"
+  ,
+  "Part\tValue\tDevice\tPackage\tDescription\v"
+  "Bauteil\tWert\tDevice\tPackage\tDescription\v"
+  ,
+  "Qty\tValue\tDevice\tParts\v"
+  "Menge\tWert\tDevice\tBauteile\v"
+  ,
+  "Partlist exported from %s at %s\v"
+  "Stückliste exportiert aus %s am %s\v"
+  ,
+  "Bill Of Material - Preview\v"
+  "Stückliste - Vorschau\v"
+  ,
+  "-Close\v"
+  "-Schließen\v"
+  ,
+  "Save Bill Of Material\v"
+  "Stückliste speichern\v"
+  ,
+  "File '\v"
+  "Datei '\v"
+  ,
+  "' exists\n\nOverwrite?\v"
+  "' existiert\n\nÜberschreiben?\v"
+  ,
+  "+&Yes\v"
+  "+&Ja\v"
+  ,
+  "-&No\v"
+  "-&Nein\v"
+  ,
+  "&No\v"
+  "&Nein\v"
+  ,
+  "Name already defined!\v"
+  "Name ist bereits definiert!\v"
+  ,
+  " Header\v"
+  " Spaltenüberschrift\v"
+  ,
+  "&Name:\v"
+  "&Name:\v"
+  ,
+  "+OK\v"
+  "+OK\v"
+  ,
+  "Name can't be empty!\v"
+  "Name kann nicht leer sein!\v"
+  ,
+  "-Cancel\v"
+  "-Abbrechen\v"
+  ,
+  "New Database\v"
+  "Neue Datenbank\v"
+  ,
+  "&Headers\v"
+  "&Spaltenüberschriften\v"
+  ,
+  "Edit\v"
+  "Bearbeiten\v"
+  ,
+  "&Add\v"
+  "&Hinzufügen\v"
+  ,
+  "New\v"
+  "Neu\v"
+  ,
+  "&Del\v"
+  "&Löschen\v"
+  ,
+  "Can't delete the \"Key\" header!\n\nUse \"Edit\" to change it.\v"
+  "Die Spaltenüberschrift \"Key\" kann nicht gelöscht werden!\n\nBenutzen Sie \"Bearbeiten\" um sie zu ändern.\v"
+  ,
+  "&Edit\v"
+  "&Bearbeiten\v"
+  ,
+  "Edit\v"
+  "Bearbeiten\v"
+  ,
+  "Please add at least one header!\v"
+  "Bitte fügen Sie mindestens eine Spaltenüberschrift hinzu!\v"
+  ,
+  "Choose database file\v"
+  "Datenbankdatei auswählen\v"
+  ,
+  "Database files (*.tsv *.csv);;All files (*)\v"
+  "Datenbankdateien (*.tsv *.csv);;Alle Dateien (*)\v"
+  ,
+  "Save database file\v"
+  "Datenbankdatei speichern\v"
+  ,
+  "Database files (*\v"
+  "Datenbankdateien (*\v"
+  ,
+  ");;All files (*)\v"
+  ");;Alle Dateien (*)\v"
+  ,
+  "Edit Database\v"
+  "Datenbank bearbeiten\v"
+  ,
+  "Please select a list entry first!\v"
+  "Bitte wählen Sie erst einen Listeneintrag aus!\v"
+  ,
+  "Please load a database file first!\v"
+  "Bitte Laden Sie zuerst eine Datenbankdatei!\v"
+  ,
+  "Database has been modified\n\nSave?\v"
+  "Die Datenbank wurde verändert\n\nSpeichern?\v"
+  ,
+  "Bill Of Material - Help\v"
+  "Stückliste - Hilfe\v"
+  ,
+  "Bill Of Material\v"
+  "Stückliste\v"
+  ,
+  "Database:\v"
+  "Datenbank:\v"
+  ,
+  "&Load\v"
+  "&Laden\v"
+  ,
+  "&New\v"
+  "&Neu\v"
+  ,
+  "List type\v"
+  "Listen-Typ\v"
+  ,
+  "&Parts\v"
+  "&Bauteile\v"
+  ,
+  "&Values\v"
+  "&Werte\v"
+  ,
+  "Output format\v"
+  "Ausgabeformat\v"
+  ,
+  "&Text\v"
+  "&Text\v"
+  ,
+  "&HTML\v"
+  "&HTML\v"
+  ,
+  "+Edit\v"
+  "+Bearbeiten\v"
+  ,
+  "Vie&w\v"
+  "&Vorschau\v"
+  ,
+  "&Save...\v"
+  "&Speichern...\v"
+  ,
+  "H&elp\v"
+  "H&ilfe\v"
+  };
+
+int Language = strstr(I18N[0], language()) / 3;
+
+string tr(string s)
+{
+  string t = lookup(I18N, s, Language, '\v');
+  return t ? t : s;
+}
+
+if (!schematic) {
+   dlgMessageBox(usage + tr("<hr><b>ERROR: No schematic!</b><p>\nThis program can only work in the schematic editor."));
+   exit(1);
+   }
+
+//XXX
+/*
+  TODO: - Query user for missing database entries ("Check" button)
+        - Allow user to define which database columns to actually use
+        - dto. for the internal data?
+        - store and retrieve the setup?
+        - what if this is run in a board?
+*/
+
+int NumParts;
+numeric string Lines[];
+numeric string PartName[], PartValue[], PartDevice[], PartPackage[], PartHeadline[], PartDescription[];
+int PartValueOn[];
+int Selected;
+
+enum { ltParts, ltValues }; // List Types
+enum { ofText, ofHTML }; // Output Formats
+int ListType = 0;
+int OutputFormat = 0;
+
+string DatabaseFile;
+string Database[];
+char DatabaseSeparator = '\t';
+string DatabaseFields[];
+int DatabaseModified = 0;
+
+char ValueSeparator = ':';
+
+string StripWhiteSpace(string s)
+{
+  while (s && isspace(s[0]))
+        s = strsub(s, 1);
+  while (s && isspace(s[strlen(s) - 1]))
+        s = strsub(s, 0, strlen(s) - 1);
+  return s;
+}
+
+void CollectPartData(void)
+{
+  NumParts = 0;
+
+  schematic(SCH) {
+    SCH.parts(P) {
+      if (P.device.package) {
+         PartName[NumParts] = P.name;
+         PartValue[NumParts] = P.value;
+         PartDevice[NumParts] = P.device.name;
+         PartPackage[NumParts] = P.device.package.name;
+         PartHeadline[NumParts] = P.device.headline;
+         PartDescription[NumParts] = P.device.description;
+         PartValueOn[NumParts] = P.device.value == "On";
+         NumParts++;
+         }
+      }
+    }
+}
+
+string DatabaseHeader(void)
+{
+  string s;
+
+  if (Database[0]) {
+     string a[];
+     int n = strsplit(a, Database[0], DatabaseSeparator);
+     int i;
+     for (i = 1; i < n; i++) {
+         s += "\t" + a[i];
+         DatabaseFields[i - 1] = a[i];
+         }
+     DatabaseFields[i - 1] = "";
+     }
+  return s;
+}
+
+string DatabaseKey(int i)
+{
+  string key = PartValue[i];
+  if (PartValueOn[i])
+     key = PartDevice[i] + ValueSeparator + key;
+  return key;
+}
+
+string DatabaseLookup(string key, int f)
+{
+  return lookup(Database, key, DatabaseFields[f], DatabaseSeparator);
+}
+
+void GeneratePartList(void)
+{
+  int NumLines = 0;
+
+//XXX column sequence?
+  Lines[NumLines++] = tr("Part\tValue\tDevice\tPackage\tDescription") + DatabaseHeader();
+  for (int i = 0; i < NumParts; i++) {
+      Lines[NumLines] = PartName[i] + "\t" + PartValue[i] + "\t" + PartDevice[i] + "\t" + PartPackage[i] + "\t" + PartHeadline[i];
+      if (Database[0]) {
+         string key = DatabaseKey(i);
+         for (int f = 0; DatabaseFields[f]; f++)
+             Lines[NumLines] += "\t" + DatabaseLookup(key, f);
+         Lines[NumLines] += "\t" + key; // hidden field!
+         }
+      NumLines++;
+      }
+  Lines[NumLines] = "";
+}
+
+void GenerateValueList(void)
+{
+  int NumLines = 0;
+  int Index[];
+
+//XXX column sequence?
+  Lines[NumLines++] = tr("Qty\tValue\tDevice\tParts") + DatabaseHeader();
+  sort(NumParts, Index, PartValue, PartDevice, PartName);
+  for (int n1 = 0, n2 = 0; ++n2 <= NumParts; ) {
+      int i1 = Index[n1];
+      if (n2 < NumParts) {
+         int i2 = Index[n2];
+         //XXX value on/off?
+         if (PartValue[i1] == PartValue[i2] && PartDevice[i1] == PartDevice[i2])//XXX  && lname[i1] == lname[i2])
+            continue;
+         }
+      string Quantity;
+      sprintf(Quantity, "%d", n2 - n1);
+      Lines[NumLines] = Quantity + "\t" + PartValue[i1] + "\t" + PartDevice[i1] + "\t";
+      for (;;) {
+          Lines[NumLines] += PartName[i1];
+          if (++n1 < n2) {
+             i1 = Index[n1];
+             Lines[NumLines] += ", ";
+             }
+          else
+             break;
+          }
+      if (Database[0]) {
+         string key = DatabaseKey(i1);
+         for (int f = 0; DatabaseFields[f]; f++)
+             Lines[NumLines] += "\t" + DatabaseLookup(key, f);
+         Lines[NumLines] += "\t" + key; // hidden field!
+         }
+      NumLines++;
+      }
+  Lines[NumLines] = "";
+}
+
+void GenerateList(void)
+{
+  switch (ListType) {
+    case ltParts:  GeneratePartList(); break;
+    case ltValues: GenerateValueList(); break;
+    }
+}
+
+string MakeListHeader(void)
+{
+  string s;
+  schematic(SCH) sprintf(s, tr("Partlist exported from %s at %s"), SCH.name, t2string(time()));
+  return s;
+}
+
+string MakeListText(void)
+{
+  int l, Width[];
+  for (l = 0; Lines[l]; l++) {
+      string a[];
+      for (int n = strsplit(a, Lines[l], '\t'); n--; )
+          Width[n] = max(Width[n], strlen(a[n]));
+      }
+  string List;
+  List = MakeListHeader() + "\n\n";
+  int numHeaders;
+  for (l = 0; Lines[l]; l++) {
+      string line, a[];
+      int n = strsplit(a, Lines[l], '\t');
+      if (l == 0)
+         numHeaders = n;
+      else
+         n = numHeaders; // for the hidden key!
+      for (int i = 0; i < n; i++) {
+          string s;
+          sprintf(s, "%s%-*s", line ? " " : "", Width[i], a[i]);
+          line += s;
+          }
+      List += line + "\n";
+      }
+  return List;
+}
+
+string MakeListHTML(void)
+{
+  string List;
+  List = "<b>" + MakeListHeader() + "</b>\n<p>\n";
+  List += "<table>\n";
+  int numHeaders;
+  for (int l = 0; Lines[l]; l++) {
+      List += "<tr>";
+      string a[];
+      int n = strsplit(a, Lines[l], '\t');
+      if (l == 0)
+         numHeaders = n;
+      else
+         n = numHeaders; // for the hidden key!
+      for (int i = 0; i < n; i++) {
+          if (l == 0)
+             a[i] = "<b>" + a[i] + "</b>";
+          List += "<td>" + a[i] + "</td>";
+          }
+      List += "</tr>\n";
+      }
+  List += "</table>\n";
+  return List;
+}
+
+string MakeList(void)
+{
+  switch (OutputFormat) {
+    case ofText: return MakeListText(); break;
+    case ofHTML: return MakeListHTML(); break;
+    }
+  return "";
+}
+
+void ViewList(void)
+{
+ dlgDialog(tr("Bill Of Material - Preview")) {
+   string s = MakeList();
+   if (OutputFormat == ofText)
+      s = "<pre>" + s + "</pre>";
+   dlgHBoxLayout dlgSpacing(400);
+   dlgHBoxLayout {
+     dlgVBoxLayout dlgSpacing(300);
+     dlgTextView(s);
+     }
+   dlgHBoxLayout {
+     dlgStretch(1);
+     dlgPushButton(tr("-Close")) dlgReject();
+     }
+   };
+}
+
+void SaveList(void)
+{
+  string FileName;
+  schematic(SCH) FileName = filesetext(SCH.name, OutputFormat == ofHTML ? ".htm" : ".bom");
+  FileName = dlgFileSave(tr("Save Bill Of Material"), FileName);
+  if (FileName) {
+     string a[];
+     if (!fileglob(a, FileName) || dlgMessageBox(tr("File '") + FileName + tr("' exists\n\nOverwrite?"), tr("+&Yes"), tr("-&No")) == 0) {
+        output(FileName, "wt") {
+          printf("%s", MakeList()); // using "%s" to avoid problems if list contains any '%'
+          }
+        }
+     }
+}
+
+int ReadDatabase(string FileName)
+{
+  string data;
+  if (fileread(data, FileName) > 0) {
+     strsplit(Database, data, '\n');
+     DatabaseSeparator = (strchr(Database[0], '\t') > -1) ? '\t' : ';';
+     DatabaseFile = FileName;
+     return 1;
+     }
+  return 0;
+}
+
+// --- Create a new database -------------------------------------------------
+
+string Headers[];
+int NumHeaders;
+int SelectedHeader;
+
+int NewDatabaseHeaderOk(string Name)
+{
+  for (int i = 0; i < NumHeaders; i++) {
+      if (Name == Headers[i]) {
+         dlgMessageBox(tr("Name already defined!"));
+         return 0;
+         }
+      }
+  return 1;
+}
+
+void NewDatabaseEdit(string Title, string Name)
+{
+  int NewName = !Name;
+  dlgDialog(Title + tr(" Header")) {
+    dlgLabel(tr("&Name:"));
+    dlgStringEdit(Name);
+    dlgHBoxLayout {
+      dlgStretch(1);
+      dlgPushButton(tr("+OK")) {
+        Name = StripWhiteSpace(Name);
+        if (!NewName) {
+           if (Name == Headers[SelectedHeader] || NewDatabaseHeaderOk(Name)) {
+              Headers[SelectedHeader] = Name;
+              dlgAccept();
+              }
+           }
+        else if (Name) {
+           if (NewDatabaseHeaderOk(Name)) {
+              SelectedHeader = NumHeaders;
+              Headers[NumHeaders] = Name;
+              Headers[++NumHeaders] = "";
+              dlgAccept();
+              }
+           }
+        else
+           dlgMessageBox(tr("Name can't be empty!"));
+        }
+      dlgPushButton(tr("-Cancel")) dlgReject();
+      }
+    };
+}
+
+void NewDatabase(void)
+{
+  DatabaseFile = "";
+  Database[0] = "";
+  GenerateList();
+  dlgRedisplay();
+
+  Headers[0] = "Key";
+  Headers[1] = "";
+  NumHeaders = 1;
+  SelectedHeader = -1;
+  int result = dlgDialog(tr("New Database")) {
+    dlgHBoxLayout {
+      dlgVBoxLayout {
+        dlgLabel(tr("&Headers"));
+        dlgListBox(Headers, SelectedHeader) NewDatabaseEdit(tr("Edit"), Headers[SelectedHeader]);
+        }
+      dlgVBoxLayout {
+        dlgPushButton(tr("&Add")) NewDatabaseEdit(tr("New"), "");
+        dlgPushButton(tr("&Del")) {
+          if (SelectedHeader > 0) {
+             for (int i = SelectedHeader; i < NumHeaders - 1; i++)
+                 Headers[i] = Headers[i + 1];
+             Headers[--NumHeaders] = "";
+             if (SelectedHeader >= NumHeaders)
+                SelectedHeader = NumHeaders - 1;
+             }
+          else
+             dlgMessageBox(tr("Can't delete the \"Key\" header!\n\nUse \"Edit\" to change it."));
+          }
+        dlgPushButton(tr("&Edit")) {
+          if (SelectedHeader >= 0)
+             NewDatabaseEdit(tr("Edit"), Headers[SelectedHeader]);
+          else
+             dlgMessageBox(tr("Please select a list entry first!"));
+          }
+        }
+      }
+    dlgHBoxLayout {
+      dlgStretch(1);
+      dlgPushButton(tr("+OK")) {
+        if (NumHeaders > 1)
+           dlgAccept();
+        else
+           dlgMessageBox(tr("Please add at least one header!"));
+        }
+      dlgPushButton(tr("-Cancel")) dlgReject();
+      }
+    };
+  if (result) {
+     string sep;
+     for (int i = 0; Headers[i]; i++) {
+         Database[0] += sep + Headers[i];
+         sep = "\t";
+         }
+     DatabaseSeparator = '\t';
+     DatabaseModified = 1;
+     GenerateList();
+     }
+}
+
+// ---
+
+void LoadDatabase(void)
+{
+  string FileName = dlgFileOpen(tr("Choose database file"), DatabaseFile, tr("Database files (*.tsv *.csv);;All files (*)"));
+  if (FileName) {
+     if (ReadDatabase(FileName)) {
+        GenerateList();
+        DatabaseModified = 0;
+        }
+     }
+}
+
+int SaveDatabase(void)
+{
+  if (!DatabaseFile) {
+     string ext = (DatabaseSeparator == '\t') ? ".tsv" : ".csv";
+     DatabaseFile = dlgFileSave(tr("Save database file"), "", tr("Database files (*") + ext + tr(");;All files (*)"));
+     if (!DatabaseFile)
+        return 0;
+     if (fileext(DatabaseFile) != ext)
+        DatabaseFile += ext;
+     }
+  fileerror();
+  output(DatabaseFile, "wt") {
+    for (int i = 0; Database[i]; i++)
+        printf("%s\n", Database[i]);
+    };
+  return !fileerror();
+}
+
+void EditDatabaseEntry(string Key, int Entry)
+{
+  string Header[];
+  string Data[];
+  int Fields = strsplit(Header, Database[0], DatabaseSeparator);
+  strsplit(Data, Database[Entry], DatabaseSeparator);
+  if (!Data[0])
+     Data[0] = Key;
+  int result = dlgDialog(tr("Edit Database")) {
+    dlgGridLayout {
+      for (int f = 0; f < Fields; f++) {
+          dlgCell(f, 0) dlgLabel(Header[f]);
+          dlgCell(f, 1) if (f) { dlgStringEdit(Data[f]); } else { dlgLabel(Data[f]); }
+          }
+      }
+    dlgHBoxLayout {
+      dlgStretch(1);
+      dlgPushButton(tr("+OK")) dlgAccept();
+      dlgPushButton(tr("-Cancel")) dlgReject();
+      }
+    };
+  if (result) {
+     for (int f = 0; f < Fields; f++)
+         Data[f] = StripWhiteSpace(Data[f]);
+     Database[Entry] = strjoin(Data, DatabaseSeparator);
+     DatabaseModified = 1;
+     GenerateList();
+     }
+}
+
+void EditDatabase(void)
+{
+  if (Database[0]) {
+     if (Selected) {
+        string a[];
+        int KeyField = strsplit(a, Lines[0], '\t');
+        strsplit(a, Lines[Selected], '\t');
+        string key = a[KeyField];
+        string data;
+        int entry;
+        for (entry = 0; Database[entry]; entry++) {
+            strsplit(a, Database[entry], DatabaseSeparator);
+            if (a[0] == key) {
+               data = Database[entry];
+               break;
+               }
+            }
+        EditDatabaseEntry(key, entry);
+        }
+     else
+        dlgMessageBox(tr("Please select a list entry first!"));
+     }
+  else
+     dlgMessageBox(tr("Please load a database file first!"));
+}
+
+int OkToClose(void)
+{
+  if (DatabaseModified) {
+     switch (dlgMessageBox(tr("Database has been modified\n\nSave?"), tr("+&Yes"), tr("&No"), tr("-Cancel"))) {
+       case 0: return SaveDatabase();
+       case 1: break;
+       case 2: return 0;
+       }
+     }
+  return 1;
+}
+
+void DisplayHelp(void)
+{
+  dlgDialog(tr("Bill Of Material - Help")) {
+    dlgHBoxLayout dlgSpacing(400);
+    dlgHBoxLayout {
+      dlgVBoxLayout dlgSpacing(300);
+      dlgTextView(language() == "de" ? HelpTextDE : HelpTextEN);
+      }
+    dlgHBoxLayout {
+      dlgStretch(1);
+      dlgPushButton(tr("-Close")) dlgReject();
+      }
+    };
+}
+
+CollectPartData();
+GenerateList();
+
+dlgDialog(tr("Bill Of Material")) {
+  dlgListView("", Lines, Selected) EditDatabase();
+  dlgHBoxLayout {
+    dlgLabel(tr("Database:"));
+    dlgLabel(DatabaseFile, 1);
+    dlgStretch(1);
+    dlgPushButton(tr("&Load")) if (OkToClose()) LoadDatabase();
+    dlgPushButton(tr("&New"))  if (OkToClose()) NewDatabase();
+    }
+  dlgHBoxLayout {
+    dlgGroup(tr("List type")) {
+      dlgRadioButton(tr("&Parts"), ListType) GeneratePartList();
+      dlgRadioButton(tr("&Values"), ListType) GenerateValueList();
+      }
+    dlgGroup(tr("Output format")) {
+      dlgRadioButton(tr("&Text"), OutputFormat);
+      dlgRadioButton(tr("&HTML"), OutputFormat);
+      }
+    }
+  dlgHBoxLayout {
+    dlgStretch(1);
+    dlgPushButton(tr("+Edit")) EditDatabase();
+    dlgPushButton(tr("Vie&w")) ViewList();
+    dlgPushButton(tr("&Save...")) SaveList();
+    dlgPushButton(tr("H&elp")) DisplayHelp();
+    dlgPushButton(tr("-Close")) if (OkToClose()) dlgAccept();
+    }
+  };

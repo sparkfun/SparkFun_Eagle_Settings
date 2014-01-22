@@ -1,0 +1,123 @@
+
+// only runs in the board, not schematic or library
+if (board) board(B)
+{
+
+	// prompt the board thickness to the user 
+		real BoardThickness = 1.6;
+		string BoardColors[] = { "green", "red", "blue" };
+		int BoardColorSelected = 0; // initially selects "green"
+		string PlatingColors[] = { "silver", "gold"};
+		int PlatingColorSelected = 0; // initially selects "silver"
+		
+		dlgDialog("Enter Parameters")
+		{
+			dlgHBoxLayout
+			{
+				dlgLabel("Enter the board thickness");
+				dlgRealEdit(BoardThickness, 0.0, 10.0);
+			}
+			dlgHBoxLayout
+			{
+				dlgLabel("Choose solder mask color");
+				dlgComboBox(BoardColors, BoardColorSelected);
+			}
+			dlgHBoxLayout
+			{
+				dlgLabel("Choose plating");
+				dlgComboBox(PlatingColors, PlatingColorSelected);
+			}
+			dlgHBoxLayout
+			{
+				dlgStretch(1);
+				dlgPushButton("+OK") dlgAccept();
+				dlgPushButton("Cancel") dlgReject();
+			}
+		};
+
+	int minH = 2147483647,
+		maxH =-2147483648,
+		minV = minH,
+		maxV = maxH;
+	
+	// find the external dimensions of the board
+	output(filesetext(B.name,".txt"))
+	{
+		// first writes the board and plating color (later used to color the board)
+		printf("color,%s,%s,\n", BoardColors[BoardColorSelected] , PlatingColors[PlatingColorSelected] );
+	
+		B.wires(W)
+		{
+			if( W.layer == 20) // dimension
+			{
+				if( W.x1 < minH ) minH = W.x1; 
+				if( W.x2 < minH ) minH = W.x2;
+				if( W.y1 < minV ) minV = W.y1;
+				if( W.y2 < minV ) minV = W.y2;
+				if( W.x1 > maxH ) maxH = W.x1; 
+				if( W.x2 > maxH ) maxH = W.x2;
+				if( W.y1 > maxV ) maxV = W.y1;
+				if( W.y2 > maxV ) maxV = W.y2;
+			}
+		}
+		printf("outline,%.2f,%.2f,%.2f,%.2f,%.1f,\n",
+				u2mm(minH) , u2mm(minV) , u2mm(maxH) , u2mm(maxV) , BoardThickness );
+	}
+	
+	// list the holes of the board hole, x, y, radius,
+	output(filesetext(B.name,".txt") ,"at")
+	{
+		B.holes(H)
+		{
+			printf("hole,%.2f,%.2f,%.2f,%.2f,\n",
+				u2mm(H.x) , u2mm(H.y) , u2mm(H.drill)/2 , BoardThickness/2);
+		}
+		B.signals(S)
+		{
+			S.vias(V)
+			{
+				printf("hole,%.2f,%.2f,%.2f,%.2f,\n",
+					u2mm(V.x) , u2mm(V.y) , u2mm(V.drill)/2 , BoardThickness/2);
+			}
+		}
+		B.elements(E)
+		{
+			E.package.holes(H)
+			{
+				printf("hole,%.2f,%.2f,%.2f,%.2f,\n",
+					u2mm(H.x) , u2mm(H.y) , u2mm(H.drill)/2 , BoardThickness/2 );
+			}
+			E.package.contacts(C)
+			{
+				if (C.pad)
+				{
+					printf("hole,%.2f,%.2f,%.2f,%.2f,\n",
+						u2mm(C.pad.x) , u2mm(C.pad.y) , u2mm(C.pad.drill)/2 , BoardThickness/2 );
+				}
+			}
+		}
+	}
+	
+	output(filesetext(B.name,".txt") ,"at")
+	{
+		B.elements(E)
+		{
+			real z;
+			if( E.mirror )
+				z=BoardThickness/-2;
+			else
+				z=BoardThickness/2;
+			printf("%s,%.2f,%.2f,%.0f,%s,%s,%.1f,\n",
+				E.name, u2mm(E.x), u2mm(E.y), E.angle, E.value, E.package.name, z);
+			
+		}
+	}
+
+}
+else
+{
+	dlgMessageBox("\n    Start this ULP in a Board    \n");
+	exit (0);
+}
+
+

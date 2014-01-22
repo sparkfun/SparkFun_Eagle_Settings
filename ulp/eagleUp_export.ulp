@@ -1,0 +1,1350 @@
+// Copyright 2011 J.Lamy. All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without modification, are
+// permitted provided that the following conditions are met:
+//
+//   1. Redistributions of source code must retain the above copyright notice, this list of
+//      conditions and the following disclaimer.
+//
+//   2. Redistributions in binary form must reproduce the above copyright notice, this list
+//      of conditions and the following disclaimer in the documentation and/or other materials
+//      provided with the distribution.
+//
+// THIS SOFTWARE IS PROVIDED BY J.Lamy ``AS IS'' AND ANY EXPRESS OR IMPLIED
+// WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+// FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL J.Lamy OR
+// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+// ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+// ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+
+#usage "<b>Exports a board to Sketchup</b>\n"
+   "<p>Generates a description of the board : outline, thickness, colors, and images of the PCB in the board directory."
+   "<p>These files can be later open with sketchup plugin."
+   "<p>Documentation avaliable at http://eagleup.wordpress.com/"
+   "<p><author>Author: jerome.lamy@gmail.com</author>"
+
+#require 5.0900					// functions netget, cfgget and cfgset only available on versions 5.9 and newer
+								// another version is available for older Eagle installations
+
+// you can adjust board colors below
+// there are 4 predefined colors and one set at run time
+// each of them is defined by a board color (dark)
+// and a lighter color for the traces
+string BoardColors[] = { "green" , "red" , "blue" , "black" , "white" , "yellow" , "custom"};
+string BoardColorsValue[] = { "0x266844" , "0x98041C" , "0x092356" , "0x141414" , "0xEEEEEE"  , "0xE6FA05" ,"0xFF6600"};
+string BoardTracesValue[] = { "0x208549" , "0xE2012D" , "0x133775" , "0x202020" , "0xDDDDDD"  , "0xFFC205" ,"0xFF0033"};
+// you can modify any color by changing the couple of values
+int constant_custom_color = 6;
+
+// predefined layers, you can modify the layer if necessary (trouble with your own custom layers)
+int drill_image_layer = 116;		// Layer# of drill image, needs to be cleaned before further execution to avoid ghost holes
+int imagesize_layer = 222;			// Layer# of imagesize, used later to place the image correctly on PCB face
+
+
+// gloabal variables
+string model_path , convert_cmd , composite_cmd , rm_cmd , mkdir_cmd, export_path;
+int use_jpg_image;
+   
+
+
+int gridunit;			// keep the used grid unit
+// Convert unity to mic, mm, mil or inch using board grid settings.
+real u2u(int val)
+{
+	switch (gridunit)
+	{
+		case GRID_UNIT_MIC  : return u2mic(val);
+		case GRID_UNIT_MM   : return u2mm(val);
+		case GRID_UNIT_MIL  : return u2mil(val);
+		case GRID_UNIT_INCH : return u2inch(val);
+	}
+}
+
+
+
+// find string s2 in s1, and replace with s3
+string replace_string(string s1, string s2, string s3)
+{
+	int i, pos = 1;
+	string a = s1;
+	while (pos >= 0)
+	{
+		pos = strstr(a, s2);
+		if (pos < 0) break;
+			string st1 = strsub(a, 0, pos);
+			string st2 = strsub(a, pos + strlen(s2));
+		a = st1+s3+st2;
+	}
+	return a;
+}
+
+
+string up_one_folder( string path )
+{
+	return strsub( path , 0 , strrstr( path , "/" , strlen(path)-2 )+1 );
+}
+
+
+
+int correct_sketchup_settings( void )
+{
+	int failed = 0;
+	
+	//replacing wrong characters automatically
+	export_path = replace_string( export_path , "\\" , "/" );
+	model_path = replace_string( model_path , "\\" , "/" );
+	convert_cmd = replace_string( convert_cmd , "\\" , "/" );
+	composite_cmd = replace_string( composite_cmd , "\\" , "/" );
+	
+	string a[];
+	if( fileglob( a , up_one_folder( convert_cmd ) + "*convert*" ) < 1  || fileglob( a , convert_cmd ) < 1)
+	{
+		dlgMessageBox( "<b>convert</b> not found, please check your path and command." );
+		failed=1;
+	}
+	if( fileglob( a , up_one_folder( composite_cmd ) + "*composite*" ) < 1  || fileglob( a , composite_cmd ) < 1)
+	{
+		dlgMessageBox( "<b>composite</b> not found, please check your path and command." );
+		failed=1;
+	}
+
+		
+	// export path can be empty
+	// if not empty, \ are replaced automatically by /
+	// the last character should be a / automatically added
+	if( export_path != "" )
+	{
+		if( strsub(export_path,strlen(export_path)-1,1) != "/" )
+			export_path = export_path + "/";
+	}
+
+	
+	// model path cannot be empty
+	// chars \ are replaced automatically by /
+	// the last character should be a / automatically added
+	// if path valid, close the dialog box, else ask user to correct
+	if( model_path == "" )
+	{
+		dlgMessageBox( "Model path should not be empty, please correct." );
+		failed=1;
+	}
+	else
+	{
+		if( strsub(model_path,strlen(model_path)-1,1) != "/" )
+			model_path = model_path + "/";
+	}
+
+	// we could here check the model path for at least one skp file ?	
+	
+	return failed;
+}
+
+
+
+void edit_sketchup_settings( void )
+{
+
+	if( EAGLE_VERSION < 5 )
+	{
+		export_path = "not available on Eagle 4.xx";
+	}
+
+	int edit_setting = dlgDialog("Edit general settings")
+	{
+		dlgHBoxLayout
+		{
+			dlgStretch(1);
+			dlgVBoxLayout
+			{
+				dlgStretch(1);
+				dlgGridLayout
+				{
+					dlgCell( 0 , 1 ) dlgSpacing(300);
+					
+					dlgCell( 1 , 0 ) dlgLabel("Set the models path");
+					dlgCell( 1 , 1 ) dlgStringEdit(model_path);
+					
+					dlgCell( 2 , 0 ) dlgLabel("Set the path to convert.exe");
+					dlgCell( 2 , 1 ) dlgStringEdit(convert_cmd);
+					
+					dlgCell( 3 , 0 ) dlgLabel("Set the path to composite.exe");
+					dlgCell( 3 , 1 ) dlgStringEdit(composite_cmd);
+					
+					dlgCell( 4 , 0 ) dlgLabel("Set the export subfolder");
+					dlgCell( 4 , 1 ) dlgStringEdit(export_path);
+				}
+				dlgSpacing(20);
+
+				dlgCheckBox("use jpg images instead of png (heavier images but necessary for some renderers)", use_jpg_image);
+				dlgSpacing(20);
+
+				
+				dlgSpacing(20);
+				
+				dlgHBoxLayout {
+					dlgStretch(1);
+					dlgPushButton("+OK") {
+						if( correct_sketchup_settings() == 0)
+							dlgAccept(1);
+					};
+					
+					dlgSpacing(20);
+					dlgPushButton("set for Windows")
+					{
+						model_path = 	"C:/Program Files/EAGLE-5.11.0/models/";
+						convert_cmd= 	"C:/Program Files/ImageMagick-6.7.3-Q8/convert.exe";
+						composite_cmd = "C:/Program Files/ImageMagick-6.7.3-Q8/composite.exe";
+						export_path = 	"eagleUp/";
+					};
+					dlgPushButton("set for OS X") 
+					{
+						model_path = 	"/Applications/EAGLE/models/";
+						convert_cmd= 	"/opt/local/bin/convert";
+						composite_cmd = "/opt/local/bin/composite";
+						export_path = 	"eagleUp/";
+					}
+					dlgStretch(1);
+				}
+				dlgStretch(1);
+			}
+			dlgStretch(1);
+		}
+	};	
+}
+
+
+
+
+
+/* OS detection function suggested by Andreas Weidner
+http://www.eaglecentral.ca/forums/index.php?t=msg&goto=139751 */
+int IsWindows()
+{	//Returns 1, if EAGLE is running under Windows (0 for Linux/Mac)
+	if ((strsub(argv[0],0,1)=="/") && (strsub(argv[0],0,2)!="//"))
+		return 0;
+	return 1;
+}
+
+
+/* functions below are used to check and correct the curved edges of the board */
+
+real deg2rad(real deg)
+{
+	return (deg/360)*(2*PI);
+}
+
+real get_arc_midX(UL_ARC arc)
+{
+	// Get an angle at the midpoint
+	int x1i, y1i;
+	real da = deg2rad((arc.angle1 - arc.angle2)/2);
+	if(da > 0)
+	{
+		x1i = arc.x1;
+		y1i = arc.y1;
+	}
+	else
+	{
+		x1i = arc.x2;
+		y1i = arc.y2;
+	}
+	// rotate point 
+	return ((x1i-arc.xc) * cos(da) - (y1i-arc.yc) * sin(da)) + arc.xc;
+}
+
+real get_arc_midY(UL_ARC arc)
+{
+	// Get an angle at the midpoint
+	int x1i, y1i;
+	real da = deg2rad((arc.angle1 - arc.angle2)/2);
+
+	if(da > 0)
+	{
+		x1i = arc.x1;
+		y1i = arc.y1;
+	}
+	else
+	{
+		x1i = arc.x2;
+		y1i = arc.y2;
+	}
+	// rotate point 
+	return ((x1i-arc.xc) * sin(da) + (y1i-arc.yc) * cos(da)) + arc.yc;    
+}
+
+real get_wire_maxV(UL_WIRE wire)
+{
+	if(wire.arc)	return max(wire.y1, max(wire.y2, get_arc_midY(wire.arc)));
+	else			return max(wire.y1, wire.y2);
+}
+
+real get_wire_maxH(UL_WIRE wire)
+{
+	if(wire.arc)	return max(wire.x1, max(wire.x2, get_arc_midX(wire.arc)));
+	else			return max(wire.x1, wire.x2);
+}
+
+real get_wire_minV(UL_WIRE wire)
+{
+	if(wire.arc)	return min(wire.y1, min(wire.y2, get_arc_midY(wire.arc)));
+	else			return min(wire.y1, wire.y2);
+}
+
+real get_wire_minH(UL_WIRE wire)
+{
+	if(wire.arc)	return min(wire.x1, min(wire.x2, get_arc_midX(wire.arc)));
+	else			return min(wire.x1, wire.x2);
+}
+
+
+string clean_drill_image( void )
+{
+	string clean_cmd = "";
+	sprintf( clean_cmd , "DISPLAY NONE %d ;\n" , drill_image_layer);
+	
+	board(B) {
+		B.circles(C) {				// looking for circle in target layer
+			if (C.layer == drill_image_layer )
+				sprintf( clean_cmd , "%s DELETE (%f %f);\n" , clean_cmd , u2u(C.x), u2u(C.y));
+		}
+	}
+	return clean_cmd;
+}
+
+string list_active_layers( void )	// list all visible layers in a string with space separation between numbers
+{
+	string active_layers;
+	board (B) { 
+		B.layers(L) {
+			if(L.visible == 1)
+				sprintf( active_layers , "%s %d" , active_layers , L.number );
+		}
+	}
+	return (active_layers + ";\n");
+}
+
+
+
+
+/* main function starts here */
+
+// only runs in the board, not schematic or library
+if (board) board(B)
+{
+    int major_version = 4;
+    int minor_version = 3;
+    string url = "http://eagleup.wordpress.com/";
+	string eagleUp_version;	
+	sprintf( eagleUp_version , "%d.%d" , major_version , minor_version);
+
+	real BoardThickness;
+	int BoardColorSelected;
+	int PlatingColorSelected;
+	int SilkColorSelected;
+	int resolution;
+	int outline_layer;
+	int silk_layer;
+	int board_only;
+	int no_image;
+	int skip_vias;
+
+	int CustomSilkTop , CustomSilkBottom;
+
+	board(B) {		gridunit = (B.grid.unit); }
+	string active_layers = list_active_layers();
+	
+	if( argv[1] == "completed" )
+	{	// after exit( "commands" ) successful, the ULP is called again to display a completion message and check for updates
+		string cmd;
+		cmd += clean_drill_image();
+		sprintf( cmd , "%s layer -%d;\n" , cmd , drill_image_layer );
+		cmd += "display NONE " + active_layers;
+		
+		
+		//***5.9
+			string webpage_full;
+			string version_line;
+			if (netget(webpage_full, "http://eagleup.wordpress.com/archive/version/") >= 0)
+			{
+				int index = strstr( webpage_full , "current_version" );
+				if( index > 0 )
+				{ 
+					version_line = strsub( webpage_full , index+16 , 3 );
+					if( strsub( version_line , 1 , 1 ) == "." )
+					{
+						int newest_version = strtol( strsub( version_line , 0 , 1 ) ) * 10 + strtol( strsub( version_line , 2 , 1 ) );
+						int index_start = strstr( webpage_full , "begin__" ) + 7;
+						int index_stop  = strstr( webpage_full , "end__" );
+						string whats_new = strsub( webpage_full , index_start , index_stop-index_start);
+						if( newest_version > major_version*10 + minor_version )
+							dlgMessageBox( "a new version of eagleUp is available ! \nCheck http://eagleup.wordpress.com/ for the latest improvements :" + whats_new );
+					}
+				}
+			}
+		//*** 
+		dlgMessageBox( "eagleUp " + eagleUp_version + " : <b>export completed</b><br>You can now import the eup file into Sketchup." );
+		exit(cmd);
+	}
+
+
+
+	
+	// path for config file on old versions, something like "C:/Program Files/EAGLE-X.Y/ulp/eagleUp_export.settings.txt"
+	string settings_file = filesetext( argv[0] , ".settings.txt");	// argv[0] is the full path of this ULP
+	
+	if( EAGLE_VERSION == 5 && EAGLE_RELEASE > 9 )
+	{
+		
+		/* read parameters from user's eaglerc file, if first run => use default values */
+		//***5.9
+		BoardThickness 			= strtod( cfgget( "eagleUp.BoardThickness" , 		"1.6" ) );
+		BoardColorSelected 		= strtol( cfgget( "eagleUp.BoardColorSelected" , 	"1" ) );		// default => red
+		PlatingColorSelected 	= strtol( cfgget( "eagleUp.PlatingColorSelected" , 	"0" ) );		// default => silver
+		SilkColorSelected 		= strtol( cfgget( "eagleUp.SilkColorSelected" , 	"0" ) );		// default => ivory
+		resolution 				= strtol( cfgget( "eagleUp.resolution" , 			"1" ) );		// default => 600 dpi
+		outline_layer 			= strtol( cfgget( "eagleUp.outline_layer" , 		"0" ) );		// default => dimension
+		silk_layer 				= strtol( cfgget( "eagleUp.silk_layer" , 			"0" ) );		// default => with tName
+		board_only 				= strtol( cfgget( "eagleUp.board_only" , 			"0" ) );		// default => disabled
+		no_image 				= strtol( cfgget( "eagleUp.no_image" , 				"0" ) );		// default => disabled
+		
+		BoardColorsValue[constant_custom_color] = cfgget( "eagleUp.BoardColorsValueCustom" , 	BoardColorsValue[constant_custom_color] );
+		BoardTracesValue[constant_custom_color] = cfgget( "eagleUp.BoardTracesValueCustom" , 	BoardTracesValue[constant_custom_color] );
+		
+		model_path 					= cfgget( "eagleUp.model_path" , 				"" );			// => will launch the editor
+		convert_cmd 				= cfgget( "eagleUp.convert_cmd" , 				"" );
+		composite_cmd 				= cfgget( "eagleUp.composite_cmd" , 			"" );
+		rm_cmd 						= cfgget( "eagleUp.rm_cmd" , 					"" );
+		export_path					= cfgget( "eagleUp.export_path" , 				"" );
+		
+		CustomSilkTop				= strtol( cfgget( "eagleUp.CustomSilkTop" , 		"121" ) );
+		CustomSilkBottom			= strtol( cfgget( "eagleUp.CustomSilkBottom" , 		"122" ) );
+		
+		skip_vias 				= strtol( cfgget( "eagleUp.skip_vias" , 			"0" ) );		// default => disabled
+		use_jpg_image			= strtol( cfgget( "eagleUp.use_jpg_image" , 		"0" ) );		// default => disabled
+		//*** 
+		}
+	else
+	{
+		/* older versions of Eagle do not have settings storage, so we use a text file located at the ULP location */
+		/* this could be an issue for example in a shared environment like a common network drive ... */
+		 
+		string settings_lines[];
+		int read_failed = 0;
+		
+		/* first we try to open the file, if it does not exist we use default settings */
+		if( filesize(settings_file)>0 )
+		{
+			int nLines = fileread(settings_lines, settings_file);
+			
+			if( nLines >  21 )
+			{
+				BoardThickness 			= strtod(settings_lines[1]);
+				BoardColorSelected 		= strtol(settings_lines[2]);
+				PlatingColorSelected 	= strtol(settings_lines[3]);
+				SilkColorSelected 		= strtol(settings_lines[4]);
+				resolution 				= strtol(settings_lines[5]);
+				outline_layer 			= strtol(settings_lines[6]);
+				silk_layer 				= strtol(settings_lines[7]);
+				board_only 				= strtol(settings_lines[8]);
+				no_image 				= strtol(settings_lines[9]);
+				
+				BoardColorsValue[constant_custom_color] 	= settings_lines[10];
+				BoardTracesValue[constant_custom_color] 	= settings_lines[11];
+				
+				// unused setting at line 12
+				model_path 				= settings_lines[13];
+				convert_cmd 			= settings_lines[14];
+				composite_cmd 			= settings_lines[15];
+				rm_cmd 					= settings_lines[16]; // should be declared unused
+				export_path				= settings_lines[17];
+				
+				CustomSilkTop			= strtod(settings_lines[18]);
+				CustomSilkBottom		= strtod(settings_lines[19]);
+				
+				skip_vias 				= strtol(settings_lines[20]);
+				use_jpg_image			= strtol(settings_lines[21]);
+			
+			}
+			else
+				read_failed = 1;
+			
+		}
+		else // no file found
+			read_failed = 1;
+			
+			
+		if( read_failed == 1)	// we use default values
+		{
+		
+			BoardThickness 			= 1.6 ;
+			BoardColorSelected 		= 1 ;		// default => red
+			PlatingColorSelected 	= 0 ;		// default => silver
+			SilkColorSelected 		= 0 ;		// default => ivory
+			resolution 				= 1 ;		// default => 600 dpi
+			outline_layer 			= 0 ;		// default => dimension
+			silk_layer 				= 0 ;		// default => with tName
+			board_only 				= 0 ;		// default => disabled
+			no_image 				= 0 ;		// default => disabled
+			
+			BoardColorsValue[constant_custom_color] 	= BoardColorsValue[constant_custom_color] ;
+			BoardTracesValue[constant_custom_color] 	= BoardTracesValue[constant_custom_color] ;
+			
+			model_path 				= "" ;		// => will launch the editor
+			convert_cmd 			= "" ;
+			composite_cmd 			= "" ;
+			rm_cmd 					= "" ;
+			export_path				= "" ;
+			
+			CustomSilkTop			= 121;
+			CustomSilkBottom		= 122;
+		
+			skip_vias 				= 0 ;		// default => disabled
+			use_jpg_image			= 0 ;		// default => disabled
+		}
+
+	}
+	
+	string PlatingColors[] = { "silver" , "gold"};
+	string PlatingColorsValue[] = { "silver" , "gold"}; 		// can be hex values if necessary
+	string SilkColors[] = { "ivory", "white" , "black"};
+	string SilkColorsValue[] = { "ivory" , "white" , "black"};	// can be hex values if necessary
+	string BoardThicknessUnit[] = {"mm","mils","inch"};
+	int BoardThicknessUnitSelected = 0;		// mm selected by default
+	
+
+	if( model_path == "" )
+	{
+		/* this is the first time eagleUp is launched on this machine */
+
+		// welcome message
+		dlgMessageBox( "Welcome to eagleUp.\nThis is the first time you run eagleUp_export.ulp The next window will help you configure your local settings. All your preferences are saved and will be restored when you run eagleUp next time." );
+	
+		// sketchp settings (first time, then can be accessed from the main menu)
+		edit_sketchup_settings();	
+	}
+
+	
+	// automatic OS detection for OS specific commands
+	if( IsWindows() )
+	{
+		rm_cmd = "del";
+		mkdir_cmd = "cmd.exe /c mkdir";		// include system call
+	}
+	else
+	{
+		rm_cmd = "rm";
+		mkdir_cmd = "mkdir";				// on linux and mac OS, no need to call terminal
+	}
+
+	int previous_unit = BoardThicknessUnitSelected;
+	int dlgAccepted = dlgDialog("EagleUp " + eagleUp_version + " Parameters")
+	{
+		dlgHBoxLayout
+		{
+			dlgStretch(1);
+			dlgVBoxLayout
+			{
+				dlgStretch(1);
+				dlgGroup("Image export") { dlgHBoxLayout {
+					dlgRadioButton("Very low 300 dpi", resolution);
+					dlgRadioButton("Low 600 dpi", resolution);
+					dlgRadioButton("High 1200 dpi", resolution);
+				}};
+				dlgGroup("Outline layer") { dlgHBoxLayout {
+					dlgRadioButton("(20) Dimension", outline_layer);
+					dlgRadioButton("(46) Milling", outline_layer);
+				}};
+				dlgGroup("Silk layers") { dlgHBoxLayout {
+					dlgRadioButton("Place + Names", silk_layer);
+					dlgRadioButton("Place only", silk_layer);
+					dlgRadioButton("Custom...", silk_layer);
+				}};
+				dlgGroup("Misc") { dlgHBoxLayout {
+					dlgCheckBox("Board only (no parts)", board_only);
+					dlgCheckBox("no image (quicker)", no_image);
+					dlgCheckBox("skip vias (quicker)", skip_vias);
+				}};
+				dlgGridLayout {
+					dlgCell( 1 , 0 ) dlgLabel("Enter the board thickness");
+					dlgCell( 1 , 1 ) dlgHBoxLayout {
+						dlgRealEdit(BoardThickness, 0.0, 500.0);
+						dlgComboBox(BoardThicknessUnit, BoardThicknessUnitSelected)
+						{
+							if		( previous_unit==0 && BoardThicknessUnitSelected==1)
+								BoardThickness /= 0.0254;
+							else if	( previous_unit==0 && BoardThicknessUnitSelected==2)
+								BoardThickness /= 25.4;
+							else if	( previous_unit==1 && BoardThicknessUnitSelected==0)
+								BoardThickness *= 0.0254;
+							else if	( previous_unit==1 && BoardThicknessUnitSelected==2)
+								BoardThickness /= 1000;
+							else if	( previous_unit==2 && BoardThicknessUnitSelected==0)
+								BoardThickness *= 25.4;
+							else if	( previous_unit==2 && BoardThicknessUnitSelected==1)
+								BoardThickness *= 1000;
+							previous_unit = BoardThicknessUnitSelected;
+						};
+					}
+					dlgCell( 2 , 0 ) dlgLabel("Choose solder mask color");
+					dlgCell( 2 , 1 ) dlgComboBox(BoardColors, BoardColorSelected);
+					dlgCell( 3 , 0 ) dlgLabel("Choose plating");
+					dlgCell( 3 , 1 ) dlgComboBox(PlatingColors, PlatingColorSelected);
+					dlgCell( 4 , 0 ) dlgLabel("Choose silk color");
+					dlgCell( 4 , 1 ) dlgComboBox(SilkColors, SilkColorSelected);
+				}
+				dlgHBoxLayout {
+					dlgStretch(1);
+					dlgPushButton("+OK") dlgAccept(1);
+					dlgPushButton("Cancel") dlgReject(-1);
+					dlgSpacing(20);
+					dlgPushButton("Edit general settings") {edit_sketchup_settings(); };
+					dlgStretch(1);
+				}
+				dlgStretch(1);
+			}
+			dlgStretch(1);
+		}
+	};
+
+	if( dlgAccepted == -1)
+		exit(-1);
+	
+	// adjust board thickness in case of units != mm
+	if( BoardThicknessUnitSelected == 0)
+		// nothing to do
+		BoardThickness *= 1;
+	else if( BoardThicknessUnitSelected == 1)
+		BoardThickness *= 0.0254;
+	else if( BoardThicknessUnitSelected == 2)
+		BoardThickness *= 25.4;
+
+		
+	if( BoardColorSelected == constant_custom_color )
+	{
+		string boardcolor;
+		string tracecolor;
+		int color_ok = -1;
+		
+		while( color_ok != 1 )
+		{
+			boardcolor = BoardColorsValue[constant_custom_color];
+			tracecolor = BoardTracesValue[constant_custom_color];
+			color_ok = dlgDialog("EagleUp custom colors")
+			{
+				dlgHBoxLayout
+				{
+					dlgStretch(1);
+					dlgVBoxLayout
+					{
+						dlgStretch(1);
+						
+						dlgGridLayout {
+							dlgCell( 1 , 0 ) dlgLabel("Set the hex value for Board color");
+							dlgCell( 1 , 1 ) dlgStringEdit(boardcolor);
+							dlgCell( 2 , 0 ) dlgLabel("Set the hex value for traces color");
+							dlgCell( 2 , 1 ) dlgStringEdit(tracecolor);
+						}
+		
+						dlgHBoxLayout {
+							dlgStretch(1);
+							dlgPushButton("+OK") dlgAccept(1);
+							dlgStretch(1);
+						}
+						dlgStretch(1);
+					}
+					dlgStretch(1);
+				}
+			}; // color ok set to +1 by pressing OK button
+			
+			if( strlen(boardcolor)!=8 || strlen(tracecolor)!=8 )
+				color_ok = -2;
+			if( strsub(boardcolor,0,2)!="0x" || strsub(tracecolor,0,2)!="0x" )
+				color_ok = -3;
+			if( color_ok == 1 )
+				for( int i=0 ; i<6 ; i++)
+					if( ! isxdigit(  boardcolor[i+2])  )
+						color_ok = -4;
+			if( color_ok == 1 )
+				for( i=0 ; i<6 ; i++)
+					if( ! isxdigit(  tracecolor[i+2])  )
+						color_ok = -5;
+			
+		} // repeat until color_ok is +1 (for ex until user gives up and keeps the default values)
+		BoardColorsValue[constant_custom_color] = boardcolor;
+		BoardTracesValue[constant_custom_color] = tracecolor;
+		
+	}
+	
+	
+	if( silk_layer == 2 )	// custom
+	{
+
+		int layer_ok = dlgDialog("EagleUp custom layer for silk screen")
+		{
+			dlgHBoxLayout
+			{
+				dlgStretch(1);
+				dlgVBoxLayout
+				{
+					dlgStretch(1);
+					
+					dlgGridLayout {
+						dlgCell( 1 , 0 ) dlgLabel("Set the custom layer for top silk screen");
+						dlgCell( 1 , 1 ) dlgIntEdit(CustomSilkTop , 1 , 255);
+						dlgCell( 2 , 0 ) dlgLabel("Set the custom layer for bottom silk screen");
+						dlgCell( 2 , 1 ) dlgIntEdit(CustomSilkBottom , 1 , 255);
+					}
+	
+					dlgHBoxLayout {
+						dlgStretch(1);
+						dlgPushButton("+OK") dlgAccept(1);
+						dlgStretch(1);
+					}
+					dlgStretch(1);
+				}
+				dlgStretch(1);
+			}
+		};
+	
+	}
+	
+	
+	if( EAGLE_VERSION == 5 && EAGLE_RELEASE > 9 )
+	{
+		/* save in user's eaglerc file the settings */
+		//***5.9
+		string str_setting;	// used to buffer the decimal values
+		
+		sprintf( str_setting , "%.2f" , BoardThickness );
+		cfgset( "eagleUp.BoardThickness" , 		str_setting );
+
+		sprintf( str_setting , "%d" , BoardColorSelected );
+		cfgset( "eagleUp.BoardColorSelected" , 	str_setting );
+		
+		sprintf( str_setting , "%d" , PlatingColorSelected );
+		cfgset( "eagleUp.PlatingColorSelected" , str_setting );
+		
+		sprintf( str_setting , "%d" , SilkColorSelected );
+		cfgset( "eagleUp.SilkColorSelected" , 	str_setting );
+		
+		sprintf( str_setting , "%d" , resolution );
+		cfgset( "eagleUp.resolution" , 			str_setting );
+		
+		sprintf( str_setting , "%d" , outline_layer );
+		cfgset( "eagleUp.outline_layer" , 		str_setting );
+		
+		sprintf( str_setting , "%d" , silk_layer );
+		cfgset( "eagleUp.silk_layer" , 			str_setting );
+		
+		sprintf( str_setting , "%d" , board_only );
+		cfgset( "eagleUp.board_only" , 			str_setting );
+		
+		sprintf( str_setting , "%d" , no_image );
+		cfgset( "eagleUp.no_image" , 			str_setting );
+
+		cfgset( "eagleUp.BoardColorsValueCustom" , 	BoardColorsValue[constant_custom_color] );
+		cfgset( "eagleUp.BoardTracesValueCustom" , 	BoardTracesValue[constant_custom_color] );
+		
+		cfgset( "eagleUp.model_path" , 				model_path );		
+		cfgset( "eagleUp.convert_cmd" , 			convert_cmd );
+		cfgset( "eagleUp.composite_cmd" , 			composite_cmd );
+		cfgset( "eagleUp.rm_cmd" , 					rm_cmd );
+		cfgset( "eagleUp.export_path" , 			export_path );
+		
+		sprintf( str_setting , "%d" , CustomSilkTop );
+		cfgset( "eagleUp.CustomSilkTop" , 			str_setting );
+		
+		sprintf( str_setting , "%d" , CustomSilkBottom );
+		cfgset( "eagleUp.CustomSilkBottom" , 		str_setting );
+		
+		sprintf( str_setting , "%d" , skip_vias );
+		cfgset( "eagleUp.skip_vias" , 				str_setting );
+		
+		sprintf( str_setting , "%d" , use_jpg_image );
+		cfgset( "eagleUp.use_jpg_image" , 			str_setting );
+		//*** 
+	}
+	else
+	{	// for older versions of Eagle that do not support cfgset
+		output( settings_file, "wt")
+		{
+			printf( "Hello curious. This file contains the user settings of eagleUp for old versions of Eagle. Do not edit by hand.\n" );
+			printf( "%.2f\n" , BoardThickness );
+			printf( "%d\n" , BoardColorSelected );
+			printf( "%d\n" , PlatingColorSelected );
+			printf( "%d\n" , SilkColorSelected );
+			printf( "%d\n" , resolution );
+			printf( "%d\n" , outline_layer );
+			printf( "%d\n" , silk_layer );
+			printf( "%d\n" , board_only );
+			printf( "%d\n" , no_image );
+			printf( "%s\n" , BoardColorsValue[constant_custom_color] );
+			printf( "%s\n" , BoardTracesValue[constant_custom_color] );
+			printf( "  unused setting\n" );	// discarded decimal separator
+			printf( "%s\n" , model_path );
+			printf( "%s\n" , convert_cmd );
+			printf( "%s\n" , composite_cmd );
+			printf( "%s\n" , rm_cmd );
+			printf( "%s\n" , export_path );
+			printf( "%d\n" , CustomSilkTop );
+			printf( "%d\n" , CustomSilkBottom );
+			printf( "%d\n" , skip_vias );
+			printf( "%d\n" , use_jpg_image );
+		}
+	}
+	
+	
+	/* save settings that will be modified by this script */
+	
+	int user_palette = palette(-1);
+	int user_tStop, user_bStop;
+	board(B)
+	{
+		B.layers(L)
+		{
+			if( L.number == LAYER_TSTOP )
+				user_tStop = L.fill;
+			if( L.number == LAYER_BSTOP )
+				user_bStop = L.fill;
+		}
+	}
+
+
+	
+	string cmd = "";
+	string str_resol;
+	string rect_str;
+				
+	if( no_image == 0 )
+	{
+
+		/* clean any object present on layer drilllayer before use */
+
+		// check if layer 116 already exists
+		int active116=0;
+		board (B) { 
+			B.layers(L) {
+				if(L.number == drill_image_layer)
+					active116=1;
+			} 
+		}
+		
+		if( active116==1)
+		{
+			cmd += clean_drill_image();
+		}
+
+	/* draw drill shapes on layer drilllayer */
+		
+		sprintf( cmd , "%s GRID mm;\nLayer %d drillImage;\nchange layer %d;\n" , cmd , drill_image_layer , drill_image_layer);
+
+		B.holes(H) {
+			sprintf(cmd, "%scircle %.3f (%.3f %.3f) (%.3f %.3f) ;\n", cmd , u2mm(H.drill/2) , u2mm(H.x), u2mm(H.y), u2mm(H.x) + u2mm(H.drill/4), u2mm(H.y) );
+		}
+		B.elements(E)
+		{
+			E.package.holes(H)
+			{
+				sprintf(cmd, "%scircle %.3f (%.3f %.3f) (%.3f %.3f) ;\n", cmd , u2mm(H.drill/2), u2mm(H.x), u2mm(H.y), u2mm(H.x) + u2mm(H.drill/4), u2mm(H.y) );
+			}
+			E.package.contacts(C)
+			{
+				if (C.pad)
+				{
+					sprintf(cmd, "%scircle %.3f (%.3f %.3f) (%.3f %.3f) ;\n", cmd , u2mm(C.pad.drill/2), u2mm(C.pad.x), u2mm(C.pad.y), u2mm(C.pad.x) + u2mm(C.pad.drill/4), u2mm(C.pad.y) );
+				}
+			}
+		}
+		B.signals(S)
+		{
+			S.vias(H)
+			{
+				sprintf(cmd, "%scircle %.3f (%.3f %.3f) (%.3f %.3f) ;\n", cmd , u2mm(H.drill/2) , u2mm(H.x), u2mm(H.y), u2mm(H.x) + u2mm(H.drill/4), u2mm(H.y) );
+			}
+		}
+
+	
+		if( resolution == 0)
+			str_resol = "300";
+		if( resolution == 1)
+			str_resol = "600";
+		if( resolution == 2)
+			str_resol = "1200";
+		
+	} // end if( no_image == 0 )
+
+	
+	// if subfolder defined, and does not exist, create it automatically
+	// unfortunately this uses a system() call and a popup for the user in versions < 5.11
+	if( export_path != "" )
+	{
+		string a[];
+		int folder_found =0;
+		int nglob = fileglob(a, filedir(B.name) + "*");
+		for( int i=0 ; i<nglob ; i++)
+		{
+			if( strsub( a[i] , strlen( a[i] )-1 , 1 ) == "/" )		// is a folder
+			{
+				// extract folder name by removing board directory
+				if(   strsub( a[i] , strlen(filedir(B.name) ) ) == export_path )
+					// found the path
+					folder_found =1;
+				
+			}
+		}
+		if( folder_found == 0 )
+		{
+			//***5.9
+			if( EAGLE_VERSION >= 5 )
+			{	// sub folder does not exist, we warn the user of the validation popup, and create the dir with a system command
+				
+				if( EAGLE_VERSION == 5 && EAGLE_RELEASE < 11 )
+					dlgMessageBox( "You have set in the general settings the subfolder " + export_path + " for your eagleUp files.\nEagle might show a popup requesting confirmation for a system command. This is normal, the command only creates the missing subfolder." );
+				
+				string a[];
+				strsplit(a, filedir(B.name)+strsub( export_path , 0 , strlen( export_path )-1 ), '/');
+				string new_folder_path;
+				if( IsWindows() )
+					new_folder_path = strjoin(a, '\\');
+				else
+					new_folder_path = strjoin(a, '/');
+				
+				system( mkdir_cmd + " " + "\"" + new_folder_path + "\"");
+			}
+			else // version 4
+			{
+				dlgMessageBox( "You have set in the general settings a subfolder for eup and image files. Unfortuantely folder creation is not supported on Eagle version 4.x  You need to manually create the folder." );
+				export_path = "";
+			}
+			//***
+			if( EAGLE_VERSION < 5 )
+			{
+				export_path = "";
+			}
+		}
+	}
+	
+	// include model_path in path
+	string eup_file = filesetext( filedir(B.name) + export_path + filename( B.name )  ,  ".eup");
+	output( eup_file , "wt")
+	{
+		// Details about the file format
+		printf("version;%d;%d;%s;\n", major_version , minor_version, url );
+
+		// write the user's settings to be used in sketchup
+		printf( "settings;%s;%s;%s;%s;\n" , model_path , convert_cmd , composite_cmd , rm_cmd); 
+
+		// first writes the board and plating color (later used to color the board)
+		printf("color;%s;%s;%s;%s;\n", BoardColorsValue[BoardColorSelected] , BoardTracesValue[BoardColorSelected]  , PlatingColorsValue[PlatingColorSelected], SilkColorsValue[SilkColorSelected] );
+
+
+		// Prefix used to store the images
+		string directory = filedir(B.name) + export_path;
+		string prefix = "eagleUp_" + filesetext( filename(B.name) , "");
+		string image_suffix = "png";
+		string image_prefix = directory + prefix;
+	
+		int target_outline_layer = 20;
+		if( outline_layer == 0)
+			target_outline_layer = 20;
+		if( outline_layer == 1)
+			target_outline_layer = 46;
+		
+		int CONSTANT_MAX = 2147483647;
+		int minH = CONSTANT_MAX,
+			maxH = -1 * CONSTANT_MAX,	
+			minV = minH,
+			maxV = maxH;
+		
+		
+		B.wires(W) 
+		{
+			if( W.layer == target_outline_layer)
+			{
+				maxV = max( maxV, get_wire_maxV(W) );
+				maxH = max( maxH, get_wire_maxH(W) );
+				minV = min( minV, get_wire_minV(W) );
+				minH = min( minH, get_wire_minH(W) );
+			}
+		}
+		B.elements(E)
+		{
+			E.package.wires(W) 
+			{
+				if( W.layer == target_outline_layer)
+				{
+					maxV = max( maxV, get_wire_maxV(W) );
+					maxH = max( maxH, get_wire_maxH(W) );
+					minV = min( minV, get_wire_minV(W) );
+					minH = min( minH, get_wire_minH(W) );
+				}
+			}
+		}
+		
+		if( minV == CONSTANT_MAX )
+		{
+			if( outline_layer == 0 )
+				dlgMessageBox( "Error, cannot find any outline on the layout ! \n check the dimension (20) layer." );
+			else
+				dlgMessageBox( "Error, cannot find any outline on the layout ! \n check the milling (46) layer." );
+			exit(-1);
+		}
+
+		if( no_image == 0 )
+		{
+			/* generate rectangle covering the board and export it as image, make image placement easier in sketchup */
+			/* layer used for that == 222 (arbitrary, can be modified in the header of this ULP) */
+			
+			
+			sprintf( cmd , "%s GRID mm;\nLayer %d imagesize;\nchange layer %d;\n" , cmd , imagesize_layer , imagesize_layer );
+
+			sprintf( rect_str , "RECT (%f %f) (%f %f);\n" , u2mm(minH) , u2mm(minV) , u2mm(maxH) , u2mm(maxV) );
+			cmd += rect_str;
+			
+			cmd += "SET FILL_LAYER imagesize 1;\n";
+	
+			cmd += "DISPLAY ALL;\n";
+			cmd += "SET PALETTE WHITE;\n";
+			cmd += "WINDOW;\n";
+			cmd += "RATSNEST;\n";
+			cmd += "SET PAD_NAMES OFF;\n";			// forced in case the user has it set (poor result)
+
+			cmd += "SET FILL_LAYER tStop 1;\n";
+			cmd += "SET FILL_LAYER bStop 1;\n";
+
+
+			
+			if( EAGLE_VERSION == 5 && EAGLE_RELEASE > 10 )
+					cmd += "SET CONFIRM YES;\n";
+
+			cmd += "DISPLAY None Top Pads Vias;\n";
+			cmd += "EXPORT IMAGE \'" + image_prefix + "_top.png' MONOCHROME " + str_resol + ";\n";
+
+			cmd += "DISPLAY None imagesize;\n";
+			cmd += "EXPORT IMAGE \'" + image_prefix + "_imagesize.png' MONOCHROME " + str_resol + ";\n";	
+			
+			cmd += "DISPLAY None Bottom Pads Vias;\n";
+			cmd += "EXPORT IMAGE \'" + image_prefix + "_bottom.png' MONOCHROME " + str_resol + ";\n";
+
+			cmd += "DISPLAY None tStop;\n";
+			cmd += "EXPORT IMAGE \'" + image_prefix + "_top_mask.png' MONOCHROME " + str_resol + ";\n";
+
+			cmd += "DISPLAY None bStop;\n";
+			cmd += "EXPORT IMAGE \'" + image_prefix + "_bottom_mask.png' MONOCHROME " + str_resol + ";\n";
+
+			string temp_silk;
+			if( silk_layer == 0)
+				cmd += "DISPLAY None tPlace -tOrigins tNames -tValues -tDocu;\n";
+			else if ( silk_layer == 1)
+				cmd += "DISPLAY None tPlace -tOrigins -tNames -tValues -tDocu;\n";
+			else if ( silk_layer == 2)
+			{
+				sprintf( temp_silk , "%d" , CustomSilkTop );
+				cmd += "DISPLAY None " + temp_silk + ";\n";
+			}
+			cmd += "EXPORT IMAGE \'" + image_prefix + "_top_silk.png' MONOCHROME " + str_resol + ";\n";
+
+			if( silk_layer == 0)
+				cmd += "DISPLAY None bPlace -bOrigins bNames -bValues -bDocu;\n";
+			else if ( silk_layer == 1)
+				cmd += "DISPLAY None bPlace -bOrigins -bNames -bValues -bDocu;\n";
+			else if ( silk_layer == 2)
+			{
+				sprintf( temp_silk , "%d" , CustomSilkBottom );
+				cmd += "DISPLAY None " + temp_silk + ";\n";
+			}
+			cmd += "EXPORT IMAGE \'" + image_prefix + "_bottom_silk.png' MONOCHROME " + str_resol + ";\n";
+
+			cmd += "SET FILL_LAYER drillImage 1;\n";
+			cmd += "DISPLAY None drillImage;\n";
+			cmd += "EXPORT IMAGE \'" + image_prefix + "_drill.png' MONOCHROME " + str_resol + ";\n";
+
+			cmd += "DISPLAY None Dimension;\n";
+			cmd += "EXPORT IMAGE \'" + image_prefix + "_outline.png' MONOCHROME " + str_resol + ";\n";
+			
+			
+			if( EAGLE_VERSION == 5 && EAGLE_RELEASE > 10 )
+					cmd += "SET CONFIRM OFF;\n";
+		
+		
+			/* delete rectangle image size */
+			cmd += "DISPLAY None imagesize;\n";
+			sprintf( rect_str , "DELETE (%f %f);\n" , u2mm(minH) , u2mm(minV) );
+			cmd += rect_str;	
+			
+			
+			//delete custom layers
+			sprintf( cmd , "%s layer -%d;\n" , cmd , imagesize_layer );
+		
+			// Image Directory
+			// Image prefix
+			// Suffix - used to enable future support for vector images
+			// Resolution - enable low / high res alternatives
+			//   last value is a switch between jpg and png for result images
+			string result_extension;
+			if( use_jpg_image == 0)
+				result_extension = "png";
+			else
+				result_extension = "jpg";
+			printf("images;%s;%s;%s;%s;%s;\n", directory, prefix, image_suffix, str_resol, result_extension);
+		
+		}
+		// restore some layers for normal view of the board
+		cmd += "DISPLAY NONE 1 16 17 18 19 20 21 22 23 24 25 26 51 52;\n";
+
+		/* describe board ouline with lines and arcs */
+		// full circle board not supported, use two half circles
+		B.wires(W)
+		{
+			if( W.layer == target_outline_layer) // dimension = 20 , milling = 46
+			{
+				// Arc
+				if( W.arc )
+				{
+					printf("outline-arc;%f;%f;%f;%f;%f;%f;\n",
+						u2mm(W.arc.xc),u2mm(W.arc.yc), u2mm(W.arc.radius), W.arc.angle1, W.arc.angle2, BoardThickness);
+				}
+				// Straight line
+				else
+				{
+					printf("outline-line;%.2f;%.2f;%.2f;%.2f;%.2f;\n",
+						u2mm(W.x1) , u2mm(W.y1) , u2mm(W.x2) , u2mm(W.y2) , BoardThickness );
+				}
+			}
+			// Required for the image processing
+			if( W.layer == 20) 
+			{
+				maxV = max( maxV, get_wire_maxV(W) );
+				maxH = max( maxH, get_wire_maxH(W) );
+				minV = min( minV, get_wire_minV(W) );
+				minH = min( minH, get_wire_minH(W) );
+			}
+		}
+		
+		B.elements(E) {
+		E.package.wires(W) 
+		{
+			if( W.layer == target_outline_layer) // drilling = 46, dimension = 20
+			{
+				// Arc
+				if( W.arc )
+				{
+					printf("outline-arc;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;\n",
+						u2mm(W.arc.xc),u2mm(W.arc.yc), u2mm(W.arc.radius), W.arc.angle1, W.arc.angle2, BoardThickness);
+				}
+				// Straight line
+				else
+				{
+					printf("outline-line;%.2f;%.2f;%.2f;%.2f;%.2f;\n",
+						u2mm(W.x1) , u2mm(W.y1) , u2mm(W.x2) , u2mm(W.y2) , BoardThickness );
+				}
+			}
+			// Required for the image processing
+			if( W.layer == 20) 
+			{
+				maxV = max( maxV, get_wire_maxV(W) );
+				maxH = max( maxH, get_wire_maxH(W) );
+				minV = min( minV, get_wire_minV(W) );
+				minH = min( minH, get_wire_minH(W) );
+			}
+		}
+	}
+
+	
+	printf("outline;%.2f;%.2f;%.2f;%.2f;%.1f;\n",
+		u2mm(minH) , u2mm(minV) , u2mm(maxH) , u2mm(maxV) , BoardThickness );
+	printf("outline-complete;%.2f;\n",
+		BoardThickness );
+	
+	
+	// list the holes of the board hole, x, y, radius,
+        int holes=0;
+
+		B.holes(H)
+		{
+			holes++;
+			printf("hole;%.2f;%.2f;%.2f;%.2f;\n",
+				u2mm(H.x) , u2mm(H.y) , u2mm(H.drill)/2 , BoardThickness/2);
+		}
+		
+		B.elements(E)
+		{
+			E.package.holes(H)
+			{
+				holes++;
+				printf("hole;%.2f;%.2f;%.2f;%.2f;\n",
+					u2mm(H.x) , u2mm(H.y) , u2mm(H.drill)/2 , BoardThickness/2 );
+			}
+		}
+		
+		if(holes > 0)
+		{
+			printf("hole-complete;%s;%d;%s;\n","holes", holes, BoardColorsValue[BoardColorSelected]);
+			holes=0;
+		}
+		
+		if( skip_vias == 0)		//vias are slow to process in Sketchup so this can save a lot of time
+		{
+			B.signals(S)
+			{
+				S.vias(V)
+				{
+					holes++;
+					printf("hole;%.2f;%.2f;%.2f;%.2f;\n",
+						u2mm(V.x) , u2mm(V.y) , u2mm(V.drill)/2 , BoardThickness/2);
+				}
+			}
+		}
+		
+		B.elements(E)
+		{
+			E.package.contacts(C)
+			{
+				if (C.pad)
+				{
+					holes++;
+					printf("hole;%.2f;%.2f;%.2f;%.2f;\n",
+						u2mm(C.pad.x) , u2mm(C.pad.y) , u2mm(C.pad.drill)/2 , BoardThickness/2 );
+				}
+			}
+		}
+		if(holes > 0)
+		{
+			printf("hole-complete;%s;%d;%s;\n","element",holes,PlatingColors[PlatingColorSelected]);
+			holes = 0;
+        }
+
+		if( board_only == 0)
+		{
+			// add components coordinates
+			real angle, angle2, z2;
+			int skip;
+			string package_name;
+			string attr_str; string temp_str[];
+			int nb_fields_attr, offset;
+			
+			
+			B.elements(E)
+			{
+				skip = 0;
+				//***5.9
+				if( EAGLE_VERSION >= 5 )
+				{
+					E.attributes(A)
+					{
+						if( A.name == "NO_BOM" )
+							skip = 1;
+					}
+				}
+				//***
+				if( !skip )
+				{
+					real z;
+					if( E.mirror )
+					{
+						z=BoardThickness/-2;
+						angle = (( E.angle + 180.0)>=360.0) ? ( E.angle - 180.0) : ( E.angle + 180.0); // modulus
+					}
+					else
+					{
+						z=BoardThickness/2;
+						angle = E.angle;
+					}
+					
+					package_name = E.package.name;
+					package_name = replace_string( package_name , "/" , "_" );
+					package_name = replace_string( package_name , "," , "." );
+					
+					//***5.9
+					if( EAGLE_VERSION >= 5 )
+					{	// it is possible to specify a different model name than the footprint name, also in the schematics and board, possible to overide the attribute
+						E.attributes(A)
+						{
+							if( A.name == "EAGLEUP" )
+								if( A.value != "" )
+								{
+									attr_str = A.value;
+									nb_fields_attr = strsplit( temp_str , attr_str , ';' );	// name and arguments are ; separated
+									
+									
+									while( strsub( temp_str[0] , 0 , 1) == " " )	// remove all spaces at beginning and end of temp_str[0]
+										temp_str[0] = strsub( temp_str[0] , 1);
+									while( strsub( temp_str[0] , strlen(temp_str[0])-1) == " " )
+										temp_str[0] = strsub( temp_str[0] , 0 , strlen(temp_str[0])-1);
+									
+									if( temp_str[0] != "")
+										package_name = temp_str[0];					// name of part is first
+									if( nb_fields_attr > 1)
+									{
+										while( strsub( temp_str[1] , 0 , 1) == " " )	// remove all spaces at beginning and end of temp_str[0]
+											temp_str[1] = strsub( temp_str[1] , 1);
+										while( strsub( temp_str[1] , strlen(temp_str[1])-1) == " " )
+											temp_str[1] = strsub( temp_str[1] , 0 , strlen(temp_str[1])-1);
+									
+										z2=z;
+										angle2=angle;
+										offset=0;
+										if( strsub( temp_str[1] , offset , 1) == "M" )				// mirror
+										{
+											offset ++;
+											z2 *= -1.0;
+											angle2 += 180;
+										}
+										if( strsub( temp_str[1] , offset , 1) == "R" )				// rotation
+										{
+											offset ++;
+											angle2 += strtod( strsub( temp_str[1] , offset ));		// angle
+										}
+										angle2 = (angle2>=360.0) ? ( angle2 - 360.0) : ( angle2); // modulus
+										angle2 = (angle2>=360.0) ? ( angle2 - 360.0) : ( angle2); // modulus
+										
+										if( angle==angle2 && z==z2 )
+											dlgMessageBox( "please check the syntax of attribute EAGLEUP of part " + E.name + " :\n" + A.value);
+										else
+										{
+											angle = angle2;
+											z= z2;
+										}
+									}
+								}
+						}
+						package_name = replace_string( package_name , ".skp" , "" );
+					}
+					//***
+					printf("package;%s;%.2f;%.2f;%.0f;%s;%s;%.1f;\n",
+						E.name, u2mm(E.x), u2mm(E.y), angle, E.value, package_name, z);
+				}
+			}
+		}
+	}
+	
+	/* restore user settings modified in the script */
+	
+	if( user_palette == 0 )
+		cmd += "SET PALETTE BLACK;\n";
+	if( user_palette == 1 )
+		cmd += "SET PALETTE WHITE;\n";	
+	if( user_palette == 2 )
+		cmd += "SET PALETTE COLORED;\n";	
+	
+	sprintf( cmd ,  "%s SET FILL_LAYER 29 %d;\n" , cmd, user_tStop);
+	sprintf( cmd ,  "%s SET FILL_LAYER 30 %d;\n" , cmd, user_bStop);
+	cmd += "display NONE " + active_layers;
+	
+	// re-launch the ULP with extra argument to display end message
+	cmd += "run '" + argv[0] + "' completed;\n";
+
+	// exit and execute the command list
+	exit( cmd );
+}
+else // if not launched from a board
+{
+	dlgMessageBox("\n    Please launch this ULP in a Board    \n");
+	exit (0);
+}
+/* end of file */

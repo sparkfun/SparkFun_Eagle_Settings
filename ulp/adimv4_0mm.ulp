@@ -1,0 +1,311 @@
+/****************************************************************************************
+*                                                                                       *
+*   AutoDimensionning of Board in mm (Version 3.0) for EAGLE 4.X only!                  *
+*                                                                                       *
+*   ORIGINAL Filename: adimv2_0mm.ulp                                                   *
+*   Written by: Michel Dagenais <jcmae@sympatico.ca>                                    *
+*   Date: September 12th 1998                                                           *
+*   Modified: Brain Technology (www.braintechnology.de) (* Nov 1999 *)                  *
+*   Now places text on appropriate side (closer to object beeing dimensionned).         *
+*                                                                                       *
+*   Filename: adimv3_0mm.ulp                                                            *
+*   Edited by: Jeff Moore <engineer@nctimes.net>                                        *
+*   Date: February 1st 2001                                                             *
+*                                                                                       *
+*   This ULP program will put all the necessary dimensions for holes (layer 45) and     *
+*   board outline (arcs and wires on layer 20) for your board into a .scr file of your  *
+*   choice and into the directory of your choice.                                       *
+*   Run the resulting script on your board to place the dimentions into the board file. *
+*                                                                                       *
+*   Few requirements:                                                                   *
+*                                                                                       *
+*      1.   The shape of your board (board outline) is drawn on layer 20 (Dimension).   *
+*      2.   You reserve layer 47 (Measures) to dimension your board.                    *
+*                                                                                       *
+*                                                                                       *
+*                                                                                       *
+****************************************************************************************/
+
+real datum_dot_diameter = 01.27;      //   diameter of connecting dot on datum line
+
+real datum_wire_width = 0.50;        //   width or datum line
+real default_wire_width = 0.20;      //   default wire width for dimension extender and leader
+real wire_width;
+
+real extender_clearance = 1.27;       //   clearance from closest edge
+real text_offset = 12.7;               // distance of dimension text from closest edge
+
+real right_top_extender_length = text_offset * 2.28;
+real left_bottom_extender_length = text_offset * 2.28;
+
+real right_top_datum_location = extender_clearance + (right_top_extender_length * 0.75);
+real left_bottom_datum_location = extender_clearance + (left_bottom_extender_length * 0.75);
+
+int right_limit;
+int top_limit;
+int left_limit;
+int bottom_limit;
+
+int x_points[];
+string x_points_loc[];   // top or bottom
+int y_points[];
+string y_points_loc[];   // right or left
+string text_location;
+string fileName;
+
+int lower_right;
+int higher_right;
+int lower_top;
+int higher_top;
+int lower_left;
+int higher_left;
+int lower_bottom;
+int higher_bottom;
+
+int count_x_points;
+int count_y_points;
+
+int i;
+int j;
+
+void check_x_points(int point_cxp, int y_point_cxp)
+{
+   for (i = 0; i <= count_x_points; ++i)
+   {
+      if (point_cxp == x_points[i])
+         break;
+   }
+   if (i > count_x_points)
+   {
+      x_points[count_x_points] = point_cxp;
+      int middle = bottom_limit + ((abs(bottom_limit) + abs(top_limit)) * 0.5);
+      if (y_point_cxp < middle)
+         text_location = "bottom";
+      else
+         text_location = "top";
+      x_points_loc[count_x_points] = text_location;
+      ++count_x_points;
+   }
+}
+
+void check_y_points(int point_cxp, int x_point_cxp)
+{
+   for (i = 0; i <= count_y_points; ++i)
+   {
+      if (point_cxp == y_points[i])
+         break;
+   }
+   if (i > count_y_points)
+   {
+      y_points[count_y_points] = point_cxp;
+      int middle = left_limit + ((abs(left_limit) + abs(right_limit)) * 0.5);
+      if (x_point_cxp < middle)
+         text_location = "left";
+      else
+         text_location = "right";
+      y_points_loc[count_y_points] = text_location;
+      ++count_y_points;
+   }
+}
+
+fileName = dlgFileSave("Save Dimensioning File", filesetext("millimeters",".scr"), "*.scr");
+  if (fileName == "") exit(0);
+
+  output(fileName)
+{
+   printf(";\n");
+   printf("Grid mm;\n");
+   printf("Change Width 2.0;\n");
+   printf("Change Size 1.77;\n");
+   printf("Change Ratio 8;\n");
+   printf("Display 20 44 45 47;\n");
+   printf("Layer 47;\n");
+   board(B)
+   {
+      B.wires(W)
+      {
+         if (W.layer == 20)
+         {
+            switch (W.y2 - W.y1)
+            {
+               case 0:
+               {
+                  if (W.y2 > top_limit)
+                     top_limit = W.y2;
+                  else
+                  {
+                     if (W.y2 < bottom_limit)
+                        bottom_limit = W.y2;
+                  }
+               }
+               default:
+               {
+                  if (W.y2 > W.y1)
+                  {
+                     if (W.y2 > top_limit)
+                        top_limit = W.y2;
+                     if (W.y1 < bottom_limit)
+                        bottom_limit = W.y1;
+                  }
+                  else
+                  {
+                     if (W.y1 > top_limit)
+                        top_limit = W.y1;
+                     if (W.y2 < bottom_limit)
+                        bottom_limit = W.y2;
+                  }
+               }
+            }
+            switch (W.x2 - W.x1)
+            {
+               case 0:
+               {
+                  if (W.x2 > right_limit)
+                     right_limit = W.x2;
+                  else
+                  {
+                     if (W.x2 < left_limit)
+                        left_limit = W.x2;
+                  }
+               }
+               default:
+               {
+                  if (W.x2 > W.x1)
+                  {
+                     if (W.x2 > right_limit)
+                        right_limit = W.x2;
+                     if (W.x1 < left_limit)
+                        left_limit = W.x1;
+                  }
+                  else
+                  {
+                     if (W.x1 > right_limit)
+                        right_limit = W.x1;
+                     if (W.x2 < left_limit)
+                        left_limit = W.x2;
+                  }
+               }
+            }
+         }
+      }
+ //     B.wires(A)
+ //     {
+ //        if (A.layer == 20)
+ //        {
+ //           check_x_points(A.x1, A.y1);
+ //           check_y_points(A.y1, A.x1);
+ //        }
+ //     }
+      B.wires(W)
+      {
+         if (W.layer == 20)
+         {
+            if(!(W.arc))
+            {
+            check_y_points(W.y2, W.x2);
+            check_y_points(W.y1, W.x1);
+            check_x_points(W.x2, W.y2);
+            check_x_points(W.x1, W.y1);
+            }
+         }
+      }
+      B.holes(H)
+      {
+         check_x_points(H.x, H.y);
+         check_y_points(H.y, H.x);
+      }
+      B.elements(E)
+      {
+           E.package.contacts(C)
+           {
+             if(C.pad)
+             {
+               check_x_points(C.pad.x, C.pad.y);
+               check_y_points(C.pad.y, C.pad.x);
+             }
+           }
+      }
+//
+//   Adding X dimensions
+//
+      for (i = 0; i <= count_x_points; ++i)
+      {
+         if (x_points[i] == 0)
+         {
+            printf("Circle 0 (0 %.2f) (0 %.2f);\n", (u2mm(top_limit) + right_top_datum_location), (u2mm(top_limit) + right_top_datum_location + (datum_dot_diameter /2)));
+            printf("Circle 0 (0 %.2f) (0 %.2f);\n", (u2mm(bottom_limit) - left_bottom_datum_location), (u2mm(bottom_limit) - left_bottom_datum_location - (datum_dot_diameter /2)));
+            printf("Wire %.2f (%.2f %.2f) (%.2f %.2f);\n", datum_wire_width, u2mm(x_points[i]), (u2mm(top_limit) + extender_clearance), u2mm(x_points[i]), (u2mm(top_limit) + right_top_extender_length));
+            printf("Wire %.2f (%.2f %.2f) (%.2f %.2f);\n", datum_wire_width, u2mm(x_points[i]), (u2mm(bottom_limit) - extender_clearance), u2mm(x_points[i]), (u2mm(bottom_limit) - left_bottom_extender_length));
+            printf("Text '%.2f' R90 (%.2f %.2f);\n", abs(u2mm(x_points[i])), u2mm(x_points[i]), (u2mm(top_limit) + text_offset));
+            printf("Text '%.2f' R90 (%.2f %.2f);\n", abs(u2mm(x_points[i])), u2mm(x_points[i]), (u2mm(bottom_limit) - text_offset - 0.3));
+
+         }
+         if (x_points_loc[i] == "top")
+         {
+            if (x_points[i] > higher_top)
+               higher_top = x_points[i];
+            if (x_points[i] < lower_top)
+               lower_top = x_points[i];
+            printf("Text '%.2f' R90 (%.2f %.2f);\n", abs(u2mm(x_points[i])), u2mm(x_points[i]), (u2mm(top_limit) + text_offset));
+            printf("Wire %.2f (%.2f %.2f) (%.2f %.2f);\n", default_wire_width, u2mm(x_points[i]), (u2mm(top_limit) + extender_clearance), u2mm(x_points[i]), (u2mm(top_limit) + right_top_extender_length));
+         }
+         else
+         {
+            if (x_points[i] > higher_bottom)
+               higher_bottom = x_points[i];
+            if (x_points[i] < lower_bottom)
+               lower_bottom = x_points[i];
+            printf("Text '%.2f' R90 (%.2f %.2f);\n", abs(u2mm(x_points[i])), u2mm(x_points[i]), (u2mm(bottom_limit) - text_offset - 0.3));
+            printf("Wire %.2f (%.2f %.2f) (%.2f %.2f);\n", default_wire_width, u2mm(x_points[i]), (u2mm(bottom_limit) - extender_clearance), u2mm(x_points[i]), (u2mm(bottom_limit) - left_bottom_extender_length));
+         }
+      }
+//   Join all X dimensions
+         if (lower_top != higher_top)
+            printf("Wire %.2f (%.2f %.2f) (%.2f %.2f);\n", default_wire_width, u2mm(lower_top), (u2mm(top_limit) + right_top_datum_location), u2mm(higher_top), (u2mm(top_limit) + right_top_datum_location));
+         if (lower_bottom != higher_bottom)
+            printf("Wire %.2f (%.2f %.2f) (%.2f %.2f);\n", default_wire_width, u2mm(lower_bottom), (u2mm(bottom_limit) - left_bottom_datum_location), u2mm(higher_bottom), (u2mm(bottom_limit) - left_bottom_datum_location));
+
+//
+// Adding Y dimensions
+//
+      for (i = 0; i <= count_y_points; ++i)
+      {
+         if (y_points[i] == 0)
+         {
+            printf("Circle 0 (%.2f 0) (%.2f 0);\n", (u2mm(right_limit) + right_top_datum_location), (u2mm(right_limit) + right_top_datum_location + (datum_dot_diameter /2)));
+            printf("Circle 0 (%.2f 0) (%.2f 0);\n", (u2mm(left_limit) - left_bottom_datum_location), (u2mm(left_limit) - left_bottom_datum_location - (datum_dot_diameter /2)));
+            printf("Wire %.2f (%.2f %.2f) (%.2f %.2f);\n", datum_wire_width, (u2mm(right_limit) + extender_clearance), u2mm(y_points[i]), (u2mm(right_limit) + right_top_extender_length), u2mm(y_points[i]));
+            printf("Wire %.2f (%.2f %.2f) (%.2f %.2f);\n", datum_wire_width, (u2mm(left_limit) - extender_clearance), u2mm(y_points[i]), (u2mm(left_limit) - left_bottom_extender_length), u2mm(y_points[i]));
+            printf("Text '%.2f' R0 (%.2f %.2f);\n", abs(u2mm(y_points[i])), (u2mm(right_limit) + text_offset), u2mm(y_points[i]));
+            printf("Text '%.2f' R0 (%.2f %.2f);\n", abs(u2mm(y_points[i])), (u2mm(left_limit) - text_offset - 0.3), u2mm(y_points[i]));
+         }
+         if (y_points_loc[i] == "right")
+         {
+            if (y_points[i] > higher_right)
+               higher_right = y_points[i];
+            if (y_points[i] < lower_right)
+               lower_right = y_points[i];
+            printf("Text '%.2f' R0 (%.2f %.2f);\n", abs(u2mm(y_points[i])), (u2mm(right_limit) + text_offset), u2mm(y_points[i]));
+            printf("Wire %.2f (%.2f %.2f) (%.2f %.2f);\n", default_wire_width, (u2mm(right_limit) + extender_clearance), u2mm(y_points[i]), (u2mm(right_limit) + right_top_extender_length), u2mm(y_points[i]));
+         }
+         else
+         {
+            if (y_points[i] > higher_left)
+               higher_left = y_points[i];
+            if (y_points[i] < lower_left)
+               lower_left = y_points[i];
+            printf("Text '%.2f' R0 (%.2f %.2f);\n", abs(u2mm(y_points[i])), (u2mm(left_limit) - text_offset - 0.3), u2mm(y_points[i]));
+            printf("Wire %.2f (%.2f %.2f) (%.2f %.2f);\n", default_wire_width, (u2mm(left_limit) - extender_clearance), u2mm(y_points[i]), (u2mm(left_limit) - left_bottom_extender_length), u2mm(y_points[i]));
+         }
+      }
+//   Join all Y dimensions
+         if (lower_right != higher_right)
+            printf("Wire %.2f (%.2f %.2f) (%.2f %.2f);\n", default_wire_width, (u2mm(right_limit) + right_top_datum_location), u2mm(lower_right), (u2mm(right_limit) + right_top_datum_location), u2mm(higher_right));
+         if (lower_left != higher_left)
+            printf("Wire %.2f (%.2f %.2f) (%.2f %.2f);\n", default_wire_width, (u2mm(left_limit) - left_bottom_datum_location), u2mm(lower_left), (u2mm(left_limit) - left_bottom_datum_location), u2mm(higher_left));
+   }
+   printf("Text 'All Dimensions in MM' R0 (%.2f %.2f);\n",u2mm(right_limit),u2mm(top_limit));
+   printf("Text 'Spark Fun Electronics' R0 (%.2f %.2f);\n",u2mm(right_limit),u2mm(top_limit)-2);
+   printf("Grid Last;\n");
+   printf("Window Fit;\n");
+}

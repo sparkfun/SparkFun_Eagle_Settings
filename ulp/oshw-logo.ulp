@@ -1,0 +1,97 @@
+/*
+ * oshw_logo.ulp
+ * April 2011, By Bill Westfield (westfw@yahoo.com)
+ *
+ * Draw the "golden orb" Open Source Hardware logo
+ * This is rather customizable; it can draw wires or polygons,
+ * on any desired layer, at any desired size.
+ */
+
+#usage "<b>Create an instance of the Open Source Hardware Logo</b><p>\n"
+       "       run oshw-logo [outside-diameter]\n\n<p>"
+       "       The logo will be centered at the current 'mark'<p>\n"
+       "<author>Author: Bill Westfield (westfw@yahoo.com)  8-Apr-2011</author>"
+
+real linewidth = 0.015;
+real td=0, totaldiam = 0.45;
+
+if (argc > 1) {
+    td = strtod(argv[1]);
+}
+if (td == 0) {
+    td = totaldiam;		/* outside diameter of teeth (total)  */
+}
+
+/*
+ * derived sizes.  Change to alter "the look", but probably not
+ * as a matter of course
+ */
+real id = (td / 3.2);		/* outside of wheel */
+real od = (id *  2.2);		/* outside of teeth */
+real bgapa = 45;		/* Bottom gap angle */
+real tia = 26;			/* Tooth inside angle */
+real toa = 14;			/* tooth outside angle */
+real ga = (45-tia);		/* Gap inside angle */
+
+/*
+ * Internal variables
+ */
+int i;
+string s, cmd;
+
+/*
+ * Draw an orb as an outline (wire) or as a filled shape (polygon)
+ * on a particular layer
+ */
+void draw_orb (string command, string layer)
+{
+    real sa;  /* Start angle for the drawing */
+
+    sprintf(s, "change layer %s; set wire_bend 7;\n", layer); cmd += s;
+    /*
+     * Start point
+     */
+    sprintf(s, "%s %f (P %f %f)", command, linewidth,
+	    od/2, -90.0 + bgapa/2);
+    cmd += s;
+
+    sa = -90 + tia/2;
+
+    for (i=0; i < 7; i++) {
+	/* outside gap */
+	sprintf(s," @+%f (P %f %f)", od/2, od/2, sa + ga);
+	cmd += s;
+	/* to outside tooth */
+	sprintf(s," +0 (P %f %f)", td/2, sa + ga + (tia - toa)/2);
+	cmd += s;
+	/* outside of tooth */
+	sprintf(s," +0 (P %f %f)", td/2, sa + ga + (tia - toa)/2 + toa);
+	cmd +=s;
+	/* back to next gap */
+	sprintf(s," +0 (P %f %f)", od/2, sa + 45.0); cmd += s;
+	sa += 45.0;
+    }
+    /*
+     * End point
+     */
+    sprintf(s, " @+%f (P %f %f)", od/2, od/2, -90.0 - bgapa/2);
+    cmd +=s;
+    /*
+     * Inside circle
+     * (we need to draw the circle in two steps to get the curvature
+     *  in the right direction.)
+     */
+    sprintf(s, " +0 (P %f %f) @-%f (P %f %f) (P %f %f) +0 (P %f %f)",
+	    id/2, -90.0 - bgapa/2, id/2,
+	    id/2,  -180.0,
+	    id/2, -90 + bgapa/2,
+	    od/2, 270 + bgapa/2);
+    cmd +=s;
+    cmd += ";\n";
+}
+
+//draw_orb("poly", "tplace");
+draw_orb("poly", "symbols");
+//draw_orb("wire", "top");
+
+exit(cmd);

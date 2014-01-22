@@ -1,0 +1,152 @@
+#usage "Mirror board (with all Layers)<p>"
+       "<author>Author: support@cadsoft.de</author>"
+
+// THIS PROGRAM IS PROVIDED AS IS AND WITHOUT WARRANTY OF ANY KIND, EXPRESSED OR IMPLIED
+// Version 1.01 -- 2006-09-15 alf@cadsoft.de
+//                 2008-04-10 changed GROUP ... (>x y); alf@cadsoft.de
+
+string cmd;
+int    lVisible[];
+int    useLayer[];
+string lNames[] = { " " };
+
+int    maxX = INT_MIN;
+int    minX = INT_MAX;
+int    maxY = INT_MIN;
+int    minY = INT_MAX;
+int    bminx, bmaxx, bminy, bmaxy;
+
+int uval = 1;
+if (board) board(B) uval = B.grid.unit;
+string unit[] = { "Micron", "mm", "Mil", "Inch" };
+int    unitPrec[] = { 0, 1, 1, 3 }, RoundFactor = pow(10, unitPrec[uval]);
+
+real u2u(int v) {
+  switch (uval) {
+    case GRID_UNIT_MIC  : return u2mic(v);
+                          break;
+
+    case GRID_UNIT_MM	: return u2mm(v);
+                          break;
+
+    case GRID_UNIT_MIL  : return u2mil(v);
+                          break;
+
+    case GRID_UNIT_INCH : return u2inch(v);
+                          break;
+  }
+}
+
+
+void checkmaxmin(int x1, int x2, int y1, int y2) {
+  if (x1 > maxX) maxX = x1;
+  if (x2 > maxX) maxX = x2;
+  if (y1 > maxY) maxY = y1;
+  if (y2 > maxY) maxY = y2;
+  if (x1 < minX) minX = x1;
+  if (x2 < minX) minX = x2;
+  if (y1 < minY) minY = y1;
+  if (y2 < minY) minY = y2;
+  return;
+}
+
+void checkarc( int x1, int x2, int y1, int y2, int xc, int yc, real angle1, real angle2, real radius) {
+  checkmaxmin( x1, x2, y1, y2 );
+  if ( angle2 > angle1 + 270.0) {
+    if     ( angle1 < 90  ) checkmaxmin( x1         , xc - radius, yc + radius, yc - radius );
+    else if( angle1 < 180 ) checkmaxmin( xc - radius, xc + radius, y1         , yc - radius );
+    else if( angle1 < 270 ) checkmaxmin( x1         , xc + radius, yc - radius, yc + radius );
+    else if( angle1 < 360 ) checkmaxmin( xc + radius, xc - radius, y1         , yc + radius );
+  }
+  else if( angle2 > angle1 + 180.0) {
+    if     ( angle1 < 90  ) checkmaxmin( x1         , xc - radius, yc + radius, y2          );
+    else if( angle1 < 180 ) checkmaxmin( x1         , xc - radius, yc - radius, y2          );
+    else if( angle1 < 270 ) checkmaxmin( x1         , xc + radius, yc - radius, y2          );
+    else if( angle1 < 360 ) checkmaxmin( x1         , xc + radius, yc + radius, y2          );
+  }
+  else if( angle2 > angle1 + 90.0 ) {
+    if     ( angle1 < 90  ) checkmaxmin( x1         , x2         , yc + radius, y2          );
+    else if( angle1 < 180 ) checkmaxmin( x1         , xc - radius, y1         , y2          );
+    else if( angle1 < 270 ) checkmaxmin( x1         , x2         , yc - radius, y2          );
+    else if( angle1 < 360 ) checkmaxmin( x1         , xc + radius, y1         , y2          );
+  }
+  return;
+}
+
+real WireLength(int x1, int x2, int y1, int y2) {
+  return sqrt( pow(u2u(x2) - u2u(x1), 2) + pow( u2u(y2) - u2u(y1), 2));
+}
+
+
+
+// main
+if (board) {
+  board(B) {
+    bminx = B.area.x1;
+    bmaxx = B.area.x2;
+    bminy = B.area.y1;
+    bmaxy = B.area.y2;
+    B.layers(L) {
+      lNames[L.number] = L.name;
+      lVisible[L.number] = L.visible;
+      useLayer[L.number] = L.used;
+    }
+    B.wires(W) {
+      if (W.layer == 20) {
+        if (W.arc) {
+          checkarc(W.arc.x1, W.arc.x2, W.arc.y1, W.arc.y2, W.arc.xc, W.arc.yc, W.arc.angle1, W.arc.angle2, W.arc.radius);
+        }
+        else {
+          checkmaxmin( W.x1, W.x2, W.y1, W.y2 );
+        }
+      }
+    }
+    B.circles(C) {
+      if (C.layer == 20) {
+        checkmaxmin( C.x - C.radius, C.x + C.radius, C.y - C.radius, C.y + C.radius );
+      }
+    }
+    B.elements(E) {
+      E.package.wires(W) {
+        if (W.layer == 20) {
+          // *** Dimension in Packages ***
+          if (W.arc) {
+            checkarc(W.arc.x1, W.arc.x2, W.arc.y1, W.arc.y2, W.arc.xc, W.arc.yc, W.arc.angle1, W.arc.angle2, W.arc.radius);
+          }
+          else {
+            checkmaxmin( W.x1, W.x2, W.y1, W.y2 );
+          }
+        }
+      }
+      E.package.circles(C) {
+        if (C.layer == 20) {
+          checkmaxmin( C.x - C.radius, C.x + C.radius, C.y - C.radius, C.y + C.radius );
+        }
+      }
+    }
+  }
+  string s;
+  sprintf(s, "DISPLAY ALL;\n");
+  cmd += s;
+  sprintf(s, "GROUP (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (>%.4f %.4f);\n",
+               u2u(bminx-1000), u2u(bminy-1000),
+               u2u(bmaxx+1000), u2u(bminy-1000),
+               u2u(bmaxx+1000), u2u(bmaxy+1000),
+               u2u(bminx-1000), u2u(bmaxy+1000),
+               u2u(bminx-1000), u2u(bminy-1000)
+         );
+  cmd += s;
+  sprintf(s, "GRID FINEST;\nMIRROR (>%.4f %.4f);\nGRID LAST;\n",
+                (u2u(maxX) + u2u(minX)) / 2, u2u(minY) );
+  cmd += s;
+  cmd += "DISPLAY NONE ";
+  for(int l = 1; l < 256; l++) {
+    if (lNames[l]) {  // Layer defined
+      if (lVisible[l]) sprintf(s, " %d", l);
+      else             sprintf(s, " -%d", l);
+      cmd += s;
+    }
+  }
+  cmd += ";";
+}
+exit(cmd);

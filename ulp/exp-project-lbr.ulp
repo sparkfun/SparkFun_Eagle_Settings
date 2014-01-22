@@ -1,0 +1,906 @@
+#usage "<b>Create library or libraries from schematic/board</b><p>\n"
+       "Can be used to make individual changes to components in a project. "
+       "Just load the board or the schematic and the board, use this ULP to "
+       "generate a library or several libraries "
+       "containing the used components, make your changes in the library, and use the "
+       "UPDATE command to introduce the changes to the schematic or board.<p>"
+       "Version 1.2: Put objects in forbidden layers into trash layer (edit variable trash_layer). "
+       "Replace @ in library and device names with $, and spaces with _.<p>"
+       "10.02.2004 Accept spaces in path and file name.<br>"
+       "09.06.2004 Replace @ in package, device and symbol names with $, and spaces with _.<br>"
+       "22.11.2004 check pin.contact (old eagle versions allow in device pins without contact)<br>"
+       "replace # with _ in Layernames<br>"
+       "correct first flag in package<br>"
+       "21.12.2004 strip @x from Device or Library name<br>"
+       "21.03.2005 export correct layer [17] of PAD Shape<br>"
+       "28.04.2005 browse path corrected<br>"
+       "Change spaces in library and device names to '_'<br>"
+       "Clear data and log if working path changed<br>"
+       "Option: Generate with or without Library-Name if creat 'one' library<br>"
+       "See Help for further details<p>"
+       "<author>Author: support@cadsoft.de</author>"
+
+
+string Version = "4.1.5";  // 28.04.2005 support@cadsoft.de
+
+
+int    trash_layer = 250; // put anything here which is in wrong layers
+
+string PrevName  = "";
+string x[] = { " " };
+string CurrentLbrName   = "";
+string EditName;
+string h, cmd = "", logf = "";
+string ScriptName, PureScriptName;
+string LogName, PureLogName;
+string WorkPath;
+string Status = "";
+int    n;
+int    NameIndex = 0;
+int    IsPackage = 1;
+int    onelib = 0, show_script = 0, save_log = 1;
+int    in_board;
+enum   {no_mode, in_symbol, in_package};
+int    mode = no_mode;
+int    generate_lbrname = 1;
+string edit_names[];
+int    cnt_edit = 0;
+
+
+string HelpText =
+  "<b>Create project library from schematic or board</b><p>\n"
+
+  "This program collects the parts from a schematic or board and stores them back "
+  "into one or several libraries.<p>\n"
+
+  "<b>Attention:</b> Before using this program please make sure no library is open and all layers containing objects "
+  "are used. If in doubt, execute the command<br>\n"
+  "&nbsp;&nbsp;&nbsp;<i>SET USED_LAYERS ALL</i><p>\n"
+  "If you use this ULP from a schematic, the respective board MUST be opened, too!<p>\n"
+
+  "<b>Creation Mode</b><p>\n"
+  "If 'Multiple libraries' is checked, the program generates libraries with their original name. "
+  "Thus you can edit symbols and/or packages in the generated libraries and "
+  "use the UPDATE command to change all of the respective parts in the schematic or board.<p>\n"
+  "If 'One library' is checked, a single project library with the name of the schematic or board is generated. "
+  "Package/symbol/device names are then prefixed with the names of the original libraries [optional].<p>\n"
+  "<b>Show scripts and file dialogs</b><p>"
+  "If checked, you can edit the scripts and select path/filename for the library "
+  "script and the log file before execution of the library generation script file.<p>\n"
+  "<b>Save log file</b><p>"
+  "If checked, the logfile is saved before execution of the library generation script file.<p>\n"
+  "<b>Working path</b><p>"
+  "Enter the path where the libraries and the log file go to, or use 'Browse' to select the directory.<p>\n"
+  "<b>Collect data, Create library</b><p>"
+  "Use these buttons in this order to create the project library or libraries.<br>"
+  "If one of the library files to be created already exists, you will be prompted if "
+  "the existing file may be deleted."
+  ;
+
+void DisplayHelp(void) {
+  dlgDialog("Bill Of Material - Help") {
+    dlgHBoxLayout dlgSpacing(400);
+    dlgHBoxLayout {
+      dlgVBoxLayout dlgSpacing(300);
+      dlgTextView(HelpText);
+    }
+    dlgHBoxLayout {
+      dlgStretch(1);
+      dlgPushButton("-Close") dlgReject();
+    }
+  };
+  return;
+}
+
+
+void testview(void) {
+  dlgDialog("Test") {
+    int sel;
+    dlgListView("Lines", x, sel);
+    dlgPushButton("+Ok") dlgAccept();
+    dlgPushButton("-Esc") { dlgReject(); exit(-9); }
+  };
+  return;
+}
+
+
+string get_project_path() {
+  if (board)     board(B)     return(filedir(B.name));
+  if (schematic) schematic(B) return(filedir(B.name));
+  if (library)   library(B)   return(filedir(B.name));
+}
+
+string replacenewline(string nl) {
+  string a[];
+  int n = strsplit(a, nl, '\n');
+  if (n > 0) {
+    nl = "";
+    for (int x = 0; x < n - 1; x++) {
+      nl += a[x] + "\\n";
+    }
+    nl += a[x];
+  }
+  return "'" + nl + "'";
+}
+
+// *** characters '#@ ' not allowed in LBR, DEV, SYM or PAC-Name ***
+string change_at(string s) { // replace '@' -> '$' | 'space' -> '_' | '#' -> '_'
+  int i;
+  for (i=0; i<strlen(s); i++) {
+      if (s[i]=='@') s[i]='$';
+      if (s[i]==' ') s[i]='_';
+      if (s[i]=='#') s[i]='_';
+  }
+  return s;
+}
+
+int at_num(string s) {
+  int pos = strstr(s, "@");
+  return ++pos;
+}
+
+string strip_at_num(string s) {   // 21.12.2004 strip @x from Device or Library name
+  int pos = strstr(s, "@");
+  if (pos > 0) {
+    s = strsub(s, 0, pos);
+  }
+  return change_at(s);
+}
+
+
+int exist_file(string FileName) {
+  string a[];
+  int n = fileglob(a, FileName);
+  if (n == 0) return 0;
+  else return 1;
+}
+
+void CreateLBRdescription(string project_name) {
+  sprintf(h, "DESCRIPTION 'Generated from <b>%s</b><p>\\n\\\nby %s';\n", filename(project_name), filename(argv[0]));
+  cmd += h;
+  return;
+}
+
+void CreateHeader(UL_LIBRARY LBR) {
+  if (project.board) {
+    project.board(B) {
+      B.layers(L) {
+        sprintf(h, "Layer %d %s;\n", L.number, strip_at_num(L.name));
+        if (L.number > 1 && L.number < 16) cmd += "# "+h;
+        else cmd += h;
+      }
+    }
+  }
+  if (project.schematic) {
+    project.schematic(SCH) {
+      SCH.layers(L) {
+        sprintf(h, "Layer %d %s;\n", L.number, strip_at_num(L.name));
+        cmd += h;
+      }
+    }
+  }
+
+  h = ""; sprintf(h, "Set Wire_bend 2;\nSet Select_factor 0;\nSet Undo_log off;\n"); cmd += h;
+  h = ""; sprintf(h, "Grid mic 1;\n"); cmd += h;
+  h = ""; sprintf(h, "Display All;\n"); cmd += h;
+  cmd  += "DESCRIPTION "+replacenewline(LBR.description)+";\n";
+  return;
+}
+
+void CreateTrailer(void) {
+  h = ""; sprintf(h, "Set Undo_log On;\nSet Select_factor 0.02;\nGrid last;\n"); cmd += h;
+  return;
+}
+
+void PrintValidLayer(int LNr) {
+  // put anything not allowed in trash_layer
+  if (mode==in_symbol && (LNr<91 || (LNr>96 && LNr<100))) {
+     h = ""; sprintf(h, "Layer trash %d;\n", trash_layer); cmd += h;
+     LNr = trash_layer;
+  }
+  if (mode==in_package && (LNr>90 && LNr<100)) {
+     LNr = trash_layer;
+     h = ""; sprintf(h, "Layer trash %d;\n", trash_layer); cmd += h;
+  }
+  h = ""; sprintf(h, "Layer %d;\n", LNr); cmd += h;
+  return;
+}
+
+
+void DrawCircle(UL_CIRCLE C) {
+  PrintValidLayer(C.layer);
+  h = ""; sprintf(h, "Circle %f (%f %f) (%f %f);\n",
+            u2mic(C.width),
+            u2mic(C.x), u2mic(C.y),
+            u2mic(C.x + C.radius), u2mic(C.y));
+            cmd += h;
+  return;
+}
+
+void DrawWire(UL_WIRE W) {
+  PrintValidLayer(W.layer);
+  if (W.arc) {
+      h = ""; sprintf(h, "Arc CCW %f (%f %f) (%f %f) (%f %f);\n",
+              u2mic(W.width),
+              u2mic(W.arc.x1), u2mic(W.arc.y1),
+              u2mic(W.arc.xc + W.arc.xc - W.arc.x1), u2mic(W.arc.yc + W.arc.yc - W.arc.y1),
+              u2mic(W.arc.x2), u2mic(W.arc.y2));
+              cmd += h;
+  }
+  else {
+  h = ""; sprintf(h, "Wire %f (%f %f) (%f %f);\n",
+          u2mic(W.width), u2mic(W.x1), u2mic(W.y1), u2mic(W.x2), u2mic(W.y2));
+          cmd += h;
+  }
+  return;
+}
+
+void DrawRectangle(UL_RECTANGLE R) {
+  PrintValidLayer(R.layer);
+  h = ""; sprintf(h, "Rect (%f %f) (%f %f);\n",
+           u2mic(R.x1), u2mic(R.y1),
+           u2mic(R.x2), u2mic(R.y2));
+           cmd += h;
+  return;
+}
+
+
+void DrawContact(UL_CONTACT C) {
+  string ShapeString;
+  string ShapeFlag;
+  if (C.pad) {
+    switch(C.pad.shape[17]) {
+      case PAD_SHAPE_SQUARE    : ShapeString = "Square";  break;
+      case PAD_SHAPE_ROUND     : ShapeString = "Round";   break;
+      case PAD_SHAPE_OCTAGON   : ShapeString = "Octagon"; break;
+      case PAD_SHAPE_LONG      : ShapeString = "Long";    break;
+      case PAD_SHAPE_OFFSET    : ShapeString = "Offset";  break;
+    }
+    if (!(C.pad.flags & PAD_FLAG_STOP) )     ShapeFlag  = "NOSTOP ";
+    if (!(C.pad.flags & PAD_FLAG_THERMALS) ) ShapeFlag += "NOTHERMALS ";
+    if ((C.pad.flags & PAD_FLAG_FIRST) )     ShapeFlag += "FIRST ";     // 22.11.2004 support@cadsoft
+    //
+    // PAD [diameter] [shape] [orientation] [flags] ['name'] *..
+    //
+    h = ""; sprintf(h, "Change Drill %f;\n", u2mic(C.pad.drill)); cmd += h;
+    h = ""; sprintf(h, "Pad %f %s R%.1f %s '%s' (%f %f);\n",
+               u2mic(C.pad.diameter[17]),
+               ShapeString,
+               C.pad.angle,
+               ShapeFlag,
+               C.pad.name,
+               u2mic(C.pad.x), u2mic(C.pad.y));
+               cmd += h;
+  }
+  else if (C.smd) {
+    if (!(C.smd.flags & PAD_FLAG_STOP) )     ShapeFlag  = "NOSTOP ";
+    if (!(C.smd.flags & SMD_FLAG_THERMALS) ) ShapeFlag += "NOTHERMALS ";
+    if (!(C.smd.flags & SMD_FLAG_CREAM) )    ShapeFlag += "NOCREAM ";
+
+    PrintValidLayer(C.smd.layer);
+    h = ""; sprintf(h, "CHANGE Roundness %d;\n", C.smd.roundness); cmd += h;
+    //
+    // SMD [x_width y_width] [-roundness] [orientation] [flags] ['name'] *..
+    //
+    h = ""; sprintf(h, "SMD %f %f -%d R%.1f %s '%s' (%f %f);\n",
+             u2mic(C.smd.dx), u2mic(C.smd.dy),
+             C.smd.roundness,
+             C.smd.angle,
+             ShapeFlag,
+             C.smd.name,
+             u2mic(C.smd.x), u2mic(C.smd.y));
+             cmd += h;
+  }
+  return;
+}
+
+void DrawText(UL_TEXT T) {
+  PrintValidLayer(T.layer);
+  switch(T.font) {
+       case FONT_VECTOR       : sprintf(h, "CHANGE FONT VECTOR;\n");
+                                cmd += h;
+                                break;
+       case FONT_PROPORTIONAL : sprintf(h, "CHANGE FONT PROPORTIONAL;\n");
+                                cmd += h;
+                                break;
+       case FONT_FIXED        : sprintf(h, "CHANGE FONT FIXED;\n");
+                                cmd += h;
+                                break;
+  }
+  string Spin = "";
+  string Mirror = "";
+  if (T.spin) Spin = "S";
+  if (T.mirror) Mirror = "M";
+
+  sprintf(h, "Change Size %f;\n", u2mic(T.size));
+  cmd += h;
+  sprintf(h, "Change Ratio %d;\n", T.ratio);
+  cmd += h;
+  sprintf(h, "Text %s%sR%.1f '%s' (%f %f);\n",
+           Spin, Mirror, T.angle, T.value, u2mic(T.x), u2mic(T.y)
+         );
+  cmd += h;
+  return;
+}
+
+void DrawHole(UL_HOLE H) {
+  h = ""; sprintf(h, "Change Drill %f;\n", u2mic(H.drill)); cmd += h;
+  h = ""; sprintf(h, "Hole (%f %f);\n", u2mic(H.x), u2mic(H.y)); cmd += h;
+  return;
+}
+
+void DrawPolygon(UL_POLYGON PL) {
+  PrintValidLayer(PL.layer);
+  h = ""; sprintf(h, "Change Isolate %f;\n", u2mic(PL.isolate)); cmd += h;
+  h = ""; sprintf(h, "Change Spacing %f;\n", u2mic(PL.spacing)); cmd += h;
+  if (PL.orphans) {
+    h = ""; sprintf(h, "Change Orphans On;\n");
+    cmd += h;
+  }
+  else {
+    h = ""; sprintf(h, "Change Orphans Off;\n"); cmd += h;
+  }
+  if (PL.thermals) {
+    h = ""; sprintf(h, "Change Thermals On;\n"); cmd += h;
+  }
+  else {
+    h = ""; sprintf(h, "Change Thermals Off;\n"); cmd += h;
+  }
+  if (PL.pour == POLYGON_POUR_SOLID) {
+    h = ""; sprintf(h, "Change Pour Solid;\n"); cmd += h;
+  }
+  else {
+    h = ""; sprintf(h, "Change Pour Hatch;\n"); cmd += h;
+  }
+  h = ""; sprintf(h, "Polygon %f ", u2mic(PL.width)); cmd += h;
+  PL.wires(W) {
+    h = ""; sprintf(h, "(%f %f) ", u2mic(W.x1), u2mic(W.y1)); cmd += h; /*start coord.*/
+    break;
+  }
+  PL.wires(W) {
+    h = ""; sprintf(h, " %+f (%f %f) ", W.curve, u2mic(W.x2), u2mic(W.y2)); cmd += h;
+  }
+  h = ""; sprintf(h, ";\n"); cmd += h;
+  return;
+}
+
+void DrawPin(UL_PIN P) {
+  string DIR = "", FUNC = "", LEN = "", VIS = "", ANGLE = "R0";
+  if (P.angle == 90)  (ANGLE  = "R90");
+  if (P.angle == 180) (ANGLE  = "R180");
+  if (P.angle == 270) (ANGLE  = "R270");
+
+  if (P.function == PIN_FUNCTION_FLAG_NONE)  (FUNC = "None");
+  if (P.function == PIN_FUNCTION_FLAG_DOT)   (FUNC  = "Dot");
+  if (P.function == PIN_FUNCTION_FLAG_CLK)   (FUNC  = "Clk");
+  if (P.function == (PIN_FUNCTION_FLAG_DOT | PIN_FUNCTION_FLAG_CLK))
+                                             (FUNC  = "DotClk");
+
+  if (P.visible == PIN_VISIBLE_FLAG_OFF)    (VIS  = "Off");
+  if (P.visible == PIN_VISIBLE_FLAG_PIN)    (VIS  = "Pin");
+  if (P.visible == PIN_VISIBLE_FLAG_PAD)    (VIS  = "Pad");
+  if (P.visible == (PIN_VISIBLE_FLAG_PIN | PIN_VISIBLE_FLAG_PAD))
+                                            (VIS  = "Both");
+
+  switch(P.direction) {
+    case PIN_DIRECTION_NC  : DIR = "NC";  break;
+    case PIN_DIRECTION_IN  : DIR = "In";  break;
+    case PIN_DIRECTION_OUT : DIR = "Out"; break;
+    case PIN_DIRECTION_IO  : DIR = "I/O"; break;
+    case PIN_DIRECTION_OC  : DIR = "OC";  break;
+    case PIN_DIRECTION_PWR : DIR = "Pwr"; break;
+    case PIN_DIRECTION_PAS : DIR = "Pas"; break;
+    case PIN_DIRECTION_HIZ : DIR = "Hiz"; break;
+    case PIN_DIRECTION_SUP : DIR = "Sup";
+  }
+
+  switch(P.length) {
+    case PIN_LENGTH_POINT  : LEN = "Point";  break;
+    case PIN_LENGTH_SHORT  : LEN = "Short";  break;
+    case PIN_LENGTH_MIDDLE : LEN = "Middle"; break;
+    case PIN_LENGTH_LONG   : LEN = "Long";
+  }
+
+  h = ""; sprintf(h, "Pin '%s' %s %s %s %s %s %d (%f %f);\n",
+          P.name,
+          DIR, FUNC, LEN, ANGLE, VIS, P.swaplevel, u2mic(P.x), u2mic(P.y));
+          cmd += h;
+  return;
+}
+
+void DrawSymbol(UL_SYMBOL S) {
+  mode = in_symbol;
+  IsPackage = 0;
+  S.circles(C)    DrawCircle(C);
+  S.rectangles(R) DrawRectangle(R);
+  S.wires(W)      DrawWire(W);
+  S.pins(P)       DrawPin(P);
+  S.texts(T)      DrawText(T);
+  S.polygons(PL)  DrawPolygon(PL);
+  mode = no_mode;
+  return;
+}
+
+void DrawPackage(UL_PACKAGE P) {
+  mode = in_package;
+  IsPackage = 1;
+  P.circles(C)    DrawCircle(C);
+  P.wires(W)      DrawWire(W);
+  P.rectangles(R) DrawRectangle(R);
+  P.contacts(C)   DrawContact(C);
+  P.texts(T)      DrawText(T);
+  P.holes(H)      DrawHole(H);
+  P.polygons(PL)  DrawPolygon(PL);
+  mode = no_mode;
+  return;
+}
+
+
+//          ************************************************
+// see also *** export-schematic_mil-board_mm-script.ulp ***
+//          ************************************************
+string checkGateName(string name) {
+  if (name == "") name = "_";
+  else   {
+    for (int x = 0; x < strlen(name); x++) {
+      if (name[x] == ' ') name[x] = '-';
+    }
+  }
+  return name;
+}
+
+void DrawDevice(UL_DEVICESET D, UL_LIBRARY LBR) {
+  string GateAddlevel;
+  string symname;
+  cmd  += "DESCRIPTION "+replacenewline(D.description)+";\n";
+  cmd  += "PREFIX '"+D.prefix+"';\n";
+  cmd  += "VALUE "+D.value+";\n";
+  D.gates(G) {
+    switch (G.addlevel) {
+      case GATE_ADDLEVEL_NEXT    : GateAddlevel = "Next";    break;
+      case GATE_ADDLEVEL_MUST    : GateAddlevel = "Must";    break;
+      case GATE_ADDLEVEL_CAN     : GateAddlevel = "Can";     break;
+      case GATE_ADDLEVEL_REQUEST : GateAddlevel = "Request"; break;
+      case GATE_ADDLEVEL_ALWAYS  : GateAddlevel = "Always";
+    };
+    h = ""; sprintf(h, "CHANGE Addlevel  %s;\n", GateAddlevel); cmd += h;
+    h = ""; sprintf(h, "CHANGE Swaplevel %d;\n", G.swaplevel); cmd += h;
+
+    if (onelib && generate_lbrname)
+      symname = strip_at_num(LBR.name) + "_" + strip_at_num(G.symbol.name);
+
+    else
+      symname = strip_at_num(G.symbol.name);
+    h = ""; sprintf(h, "ADD %s '%s' (%f %f);\n", symname, checkGateName(G.name), u2mic(G.x), u2mic(G.y)); cmd += h;
+  }
+  D.devices(DV) {
+    if (DV.package) {
+      if (onelib && generate_lbrname)
+          cmd += "PACKAGE '" + strip_at_num(LBR.name) + "_"+ strip_at_num(DV.package.name) + "' " + strip_at_num(DV.name) + ";\n";
+
+      else
+        cmd += "PACKAGE '" + strip_at_num(DV.package.name) + "' " + strip_at_num(DV.name) + ";\n";
+      cmd += "TECHNOLOGY "+DV.technologies+";\n";
+    }
+    DV.gates(G) {
+      G.symbol.pins(P) {
+        if (DV.package) {
+          if (P.contact) {
+            h = ""; sprintf(h, "CONNECT '%s.%s' '%s';\n", checkGateName(G.name), P.name, P.contact.name); cmd += h;
+          }
+        }
+      }
+    }
+  }
+  return;
+}
+
+//----------------
+void OutputUnmistakablePackages(UL_LIBRARY LBR) {
+  PrevName = "";
+  if (exist_file(WorkPath+CurrentLbrName+".lbr")) {
+    h = ""; sprintf(h, "REMOVE '%s';\n", WorkPath+CurrentLbrName+".lbr"); cmd += h; // delete exitsting lbr
+  }
+  h = ""; sprintf(h, "OPEN '%s.lbr';\n", WorkPath+CurrentLbrName); cmd += h;
+  CreateHeader(LBR);
+  LBR.packages(P) {
+    if (PrevName != strip_at_num(P.name)) {
+      logf += "   PAC: "+ strip_at_num(P.name) + "\n"; Status = "   PAC: " + strip_at_num(P.name);  dlgRedisplay();
+      NameIndex = 0;
+      h = ""; sprintf(h, "Edit %s.PAC;\n", strip_at_num(P.name)); cmd += h;
+      DrawPackage(P);
+    }
+    else {
+      NameIndex++;
+      h = ""; sprintf(h, "Edit %s$%02d.PAC;\n", strip_at_num(P.name), NameIndex); cmd += h;
+      //logfile
+      h = ""; sprintf(h, "   PAC: %s renamed to %s$%02d\n", strip_at_num(P.name), strip_at_num(P.name), NameIndex); logf += h; Status = h;  dlgRedisplay();
+      // end logfile
+      DrawPackage(P);
+      // cmd  += "WIN FIT;\n";
+    }
+    PrevName = P.name;
+    cmd  += "DESCRIPTION "+replacenewline(P.description)+";\n";
+  }
+  return;
+}
+
+// ----------------------------------------------------------------------------------------
+int is_new(void) { // n = nr of entries
+  int i;
+  if (n == 0) return 1;
+  for (i = 0; i < n; i++) {
+    if (x[n] == x[i]) {
+       return(0);
+    }
+  }
+  return 1;
+}
+
+// ---------
+void CreateOneLibHeader(UL_LIBRARY LBR, string project_name) {
+  if (exist_file(WorkPath+CurrentLbrName+".lbr")) {
+    h = ""; sprintf(h, "REMOVE '%s';\n", WorkPath+CurrentLbrName+".lbr"); cmd += h; // delete exitsting lbr
+  }
+  h = ""; sprintf(h, "OPEN '%s.lbr';\n", WorkPath+CurrentLbrName); cmd += h;
+  CreateHeader(LBR);
+  CreateLBRdescription(project_name);
+}
+
+// ---------
+void OutputPackages(UL_LIBRARY LBR) {
+  string pacname;
+  LBR.packages(P) {
+    if (!generate_lbrname && at_num(P.name) ) ;
+    else {
+      if (onelib && generate_lbrname)
+        pacname = strip_at_num(LBR.name) + "_" + strip_at_num(P.name);
+
+      else
+        pacname = strip_at_num(P.name);
+
+      n++;
+      x[n] = pacname;
+      if (is_new()) {
+        logf += "   PAC: "+pacname+"\n"; Status = "   PAC: "+P.name; dlgRedisplay();
+        h = ""; sprintf(h, "Edit %s.PAC;\n", strip_at_num(pacname)); cmd += h;
+        DrawPackage(P);
+        cmd  += "DESCRIPTION "+replacenewline(P.description)+";\n";
+        // cmd += "WIN FIT;\n";
+      }
+    }
+  }
+  return;
+}
+
+void OutputSymbols(UL_LIBRARY LBR) {
+  string symname;
+  LBR.symbols(S) {
+    if (!generate_lbrname && at_num(S.name) ) ;
+    else {
+      if (onelib && generate_lbrname)
+        symname = strip_at_num(LBR.name) + "_" + S.name;
+
+      else
+        symname = strip_at_num(S.name);
+
+      n++;
+      x[n] = symname;
+      if (is_new()) {
+        logf += "   SYM: " + symname + "\n"; Status = "   SYM: " + S.name;  dlgRedisplay();
+        h = ""; sprintf(h, "Edit %s.SYM;\n", symname); cmd += h;
+        DrawSymbol(S);
+        // cmd += "WIN FIT;\n";
+      }
+    }
+  }
+  return;
+}
+
+void OutputDevices(UL_LIBRARY LBR) {
+  string dname;
+  LBR.devicesets(D) {
+    if (!generate_lbrname && at_num(D.name) ) ;
+    else {
+      if (onelib && generate_lbrname)
+        dname = strip_at_num(LBR.name) + "_" + strip_at_num(D.name);
+
+      else
+        dname = strip_at_num(D.name);
+
+      n++;
+      x[n] = dname;
+      if (is_new()) {
+        logf += "   DEV: " + dname+"\n"; Status = "   DEV: " + strip_at_num(D.name);  dlgRedisplay();
+        NameIndex = 0;
+        h = ""; sprintf(h, "Edit %s.DEV;\n", dname); cmd += h;
+        DrawDevice(D, LBR);
+        // cmd  += "WIN FIT;\n";
+      }
+    }
+  }
+  return;
+}
+
+// ------------
+void createMechanical(void) {
+  if (dlgMessageBox("Eport also only mechanicle packages from board?", "Yes", "No") != 0) return;
+
+  if (project.board) {
+    project.board(B) { // extract also ONLY mechanical packages (without pads/smds)
+
+      B.libraries(LBR) {
+        CurrentLbrName = strip_at_num(LBR.name);
+        LBR.packages(PAC) {
+
+          int k;
+          PAC.contacts(C) {
+            k++;
+          }
+          if (!k) {
+
+            logf += "LIBRARY: "+CurrentLbrName+".lbr\n";
+
+            PrevName = "";
+            h = ""; sprintf(h, "OPEN '%s.lbr';\n", WorkPath+CurrentLbrName); cmd += h;
+
+            LBR.packages(P) {
+
+
+              int kontakt;
+              P.contacts(C) {
+                kontakt++;
+              }
+              if (!kontakt) {
+                if (PrevName != strip_at_num(P.name)) {
+                  logf += "   PAC: "+ strip_at_num(P.name) + "\n"; Status = "   PAC: " + strip_at_num(P.name); dlgRedisplay();
+                  NameIndex = 0;
+                  h = ""; sprintf(h, "Edit %s.PAC;\n", strip_at_num(P.name)); cmd += h;
+                  cmd += "SET WIRE_BEND 2;\n";
+                  DrawPackage(P);
+                }
+                else {
+                  NameIndex++;
+                  h = ""; sprintf(h, "Edit %s$%02d.PAC;\n", strip_at_num(P.name), NameIndex); cmd += h;
+                  //logfile
+                  h = ""; sprintf(h, "   PAC: %s renamed to %s$%02d\n", strip_at_num(P.name), strip_at_num(P.name), NameIndex); logf += h; Status = h; dlgRedisplay();
+                  // end logfile
+                  cmd += "SET WIRE_BEND 2;\n";
+                  DrawPackage(P);
+                  // cmd  += "WIN FIT;\n";
+                }
+                PrevName = P.name;
+                cmd  += "DESCRIPTION "+replacenewline(P.description)+";\n";
+              }
+            }
+          }
+          cmd += "WRITE;\n";
+          break;
+        }
+      }
+    }
+  }
+  return;
+}
+
+
+void make_lbr(void) {
+  if (board) board(B) {
+    in_board = 1;
+    B.libraries(LBR) {
+      CurrentLbrName = strip_at_num(LBR.name);
+      LBR.packages(PAC) {
+        logf += "LIBRARY: "+CurrentLbrName+".lbr\n";
+        OutputUnmistakablePackages(LBR);
+        cmd += "WRITE;\n";
+        break;
+      };
+    }
+  }
+  if (schematic) schematic(SCH) {
+    in_board = 0;
+    SCH.libraries(LBR) {
+      CurrentLbrName = strip_at_num(LBR.name);
+      LBR.devices(DEV) {
+        logf += "LIBRARY: "+CurrentLbrName+".lbr\n";
+        OutputUnmistakablePackages(LBR);
+        n=0;
+        OutputSymbols(LBR);
+        n=0;
+        OutputDevices(LBR);
+        cmd += "WRITE;\n";
+        break;
+      };
+    }
+    createMechanical();
+  }
+  CreateTrailer();
+}
+
+//-------------------
+void make_one_lbr(void) {
+  if (board) board(B) {
+    in_board = 1;
+    B.libraries(LBR) {
+      CurrentLbrName = strip_at_num(filesetext(EditName, ""));
+      logf += "LIBRARY: "+CurrentLbrName+".lbr\n";
+      CreateOneLibHeader(LBR, B.name);
+      break;
+    }
+    n = 0;
+    B.libraries(LBR) {
+      OutputPackages(LBR);
+    }
+    cmd += "WRITE;\n";
+    CreateTrailer();
+  }
+
+  if (schematic) schematic(SCH) {
+    in_board = 0;
+    SCH.libraries(LBR) {
+      CurrentLbrName = strip_at_num(filesetext(EditName, ""));
+      logf += "LIBRARY: "+CurrentLbrName+".lbr\n";
+      CreateOneLibHeader(LBR, SCH.name);
+      break;
+    }
+    n = 0;
+    SCH.libraries(LBR) {
+      OutputPackages(LBR);
+    }
+    n = 0;
+    SCH.libraries(LBR) {
+      LBR.devices(DEV) {
+        OutputSymbols(LBR);
+      }
+    }
+    n = 0;
+    SCH.libraries(LBR) {
+      LBR.devices(DEV) {
+        OutputDevices(LBR);
+      }
+    }
+    cmd += "WRITE;\n";
+    CreateTrailer();
+  }
+  return;
+}
+
+// -----------
+void show_save_log_file(string cm) {
+  if(show_script) {
+    int R = dlgDialog("Save Log File") {
+      dlgVBoxLayout {
+        dlgLabel("Edit only if you are sure what you do!");
+        dlgTextEdit(cm);
+        dlgHBoxLayout {
+          dlgPushButton("+Ok") dlgAccept();
+          dlgPushButton("-Cancel") dlgReject();
+        }
+      }
+    };
+    if (R) {
+      LogName = dlgFileSave("Save Script File", WorkPath+PureLogName, "*.log");
+      if (LogName != "") output(LogName, "wtD") printf("%s", cm);
+    }
+  }
+  else {
+    output(WorkPath+PureLogName, "wtD") printf("%s", cm);
+  }
+  return;
+}
+
+// -----------
+
+void show_save_script_file(string cm) {
+  if (show_script) {
+    int R = dlgDialog("Save Script File") {
+      dlgVBoxLayout {
+        dlgLabel("Edit only if you are sure what you do!");
+        dlgTextEdit(cm);
+        dlgHBoxLayout {
+          dlgPushButton("+Ok") dlgAccept();
+          dlgPushButton("-Cancel") dlgReject();
+        }
+      }
+    };
+    if (R) {
+      ScriptName = dlgFileSave("Save Script File", WorkPath+PureScriptName, "*.scr");
+      if (ScriptName != "") output(ScriptName, "wtD") printf("%s", cm);
+    }
+  }
+  else {
+    ScriptName = WorkPath+PureScriptName;
+    output(ScriptName, "wtD") printf("%s", cm);
+  }
+  return;
+}
+
+//------------ main ----------------------------------------
+
+if (library) {
+  dlgMessageBox(usage + "<b>ERROR</b><hr>This program can only work in the schematic or board editor.");
+  exit(1);
+}
+else {
+  if (board) board(B)         EditName = filename(B.name);  // name of loaded board/schematic w/o path
+  if (schematic) schematic(S) EditName = filename(S.name);
+}
+
+PureScriptName = filesetext(EditName, ".scr");               // name of generated script w/o path
+PureLogName    = filesetext(EditName, ".log");               // name of generated log msgs w/o path
+WorkPath = get_project_path();
+
+Status = "Version " + Version;
+
+int Result = dlgDialog("Create Project Library") {
+    string globList[];
+    int globListIndex = -1;
+    int globCnt = 0;
+    dlgHBoxLayout {
+      dlgStretch(1);
+      dlgSpacing(500);
+      dlgStretch(1);
+    }
+    dlgHBoxLayout {
+      dlgVBoxLayout {
+        dlgGroup("Creation Mode") {
+          dlgRadioButton("&Multiple libraries", onelib);
+          dlgRadioButton("&One library", onelib);
+          dlgHBoxLayout {
+            dlgSpacing(16);
+            dlgCheckBox("&Generate LBR-Name_/PAC/SYM/DEV", generate_lbrname);
+
+          }
+          dlgHBoxLayout {
+            dlgSpacing(34);
+            dlgLabel("if One library selected");
+          }
+        }
+        dlgGroup("User Interface") {
+          dlgCheckBox("Show scripts and file dialogs", show_script);
+          dlgCheckBox("Save log file", save_log);
+        }
+        dlgStretch(1);
+      }
+      dlgVBoxLayout {
+        dlgLabel("Log file");
+        dlgTextView(logf);
+      }
+    }
+    dlgHBoxLayout {
+      dlgSpacing(60);
+      dlgLabel("&Working path:");
+      dlgStringEdit(WorkPath);
+      dlgPushButton("Bro&wse") {
+        if (cmd) {
+          cmd = "";
+          logf = "";
+        }
+
+        h = WorkPath;
+        WorkPath = dlgDirectory("Select a directory", WorkPath);
+        if (WorkPath == "") WorkPath = h;
+        else WorkPath += "/";     // 29.03.2005 support@cadsoft.de
+      }
+    }
+    dlgSpacing(10);
+    dlgHBoxLayout {
+      dlgLabel(Status, 1);
+      dlgStretch(1);
+      dlgPushButton("+&Collect data") { logf = "Project Library Creation Log File "+t2string(time())+"\n"
+                                                         +EAGLE_SIGNATURE+"\nCreated from: "+EditName+"\n\n";
+                                        if (onelib) { cmd = ""; make_one_lbr(); }
+                                        else        { cmd = ""; make_lbr(); }
+                                        show_save_script_file(cmd);
+                                        Status = "Collect finish";
+                                        dlgRedisplay();
+                                        if (save_log)  show_save_log_file(logf);
+                                      }
+      dlgPushButton("Create &library") { if (cmd == "") dlgMessageBox("Use 'Collect data' first!","&OK");
+                                         else           exit("SCRIPT '"+ScriptName+"';\n");
+                                       }
+      dlgPushButton("-&Quit")          dlgReject();
+      dlgSpacing(23);
+      dlgPushButton("&Help")           DisplayHelp();
+    }
+};
