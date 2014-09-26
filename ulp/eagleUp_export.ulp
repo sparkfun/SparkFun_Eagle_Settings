@@ -42,7 +42,6 @@ string BoardTracesValue[] = { "0x208549" , "0xE2012D" , "0x133775" , "0x202020" 
 int constant_custom_color = 6;
 
 // predefined layers, you can modify the layer if necessary (trouble with your own custom layers)
-int drill_image_layer = 116;		// Layer# of drill image, needs to be cleaned before further execution to avoid ghost holes
 int imagesize_layer = 222;			// Layer# of imagesize, used later to place the image correctly on PCB face
 
 
@@ -197,8 +196,8 @@ void edit_sketchup_settings( void )
 					dlgPushButton("set for Windows")
 					{
 						model_path = 	"C:/Program Files/EAGLE-5.11.0/models/";
-						convert_cmd= 	"C:/Program Files/ImageMagick-6.7.3-Q8/convert.exe";
-						composite_cmd = "C:/Program Files/ImageMagick-6.7.3-Q8/composite.exe";
+						convert_cmd= 	"C:/Program Files/ImageMagick-6.7.8-Q8/convert.exe";
+						composite_cmd = "C:/Program Files/ImageMagick-6.7.8-Q8/composite.exe";
 						export_path = 	"eagleUp/";
 					};
 					dlgPushButton("set for OS X") 
@@ -302,20 +301,6 @@ real get_wire_minH(UL_WIRE wire)
 }
 
 
-string clean_drill_image( void )
-{
-	string clean_cmd = "";
-	sprintf( clean_cmd , "DISPLAY NONE %d ;\n" , drill_image_layer);
-	
-	board(B) {
-		B.circles(C) {				// looking for circle in target layer
-			if (C.layer == drill_image_layer )
-				sprintf( clean_cmd , "%s DELETE (%f %f);\n" , clean_cmd , u2u(C.x), u2u(C.y));
-		}
-	}
-	return clean_cmd;
-}
-
 string list_active_layers( void )	// list all visible layers in a string with space separation between numbers
 {
 	string active_layers;
@@ -337,7 +322,7 @@ string list_active_layers( void )	// list all visible layers in a string with sp
 if (board) board(B)
 {
     int major_version = 4;
-    int minor_version = 3;
+    int minor_version = 4;
     string url = "http://eagleup.wordpress.com/";
 	string eagleUp_version;	
 	sprintf( eagleUp_version , "%d.%d" , major_version , minor_version);
@@ -354,6 +339,7 @@ if (board) board(B)
 	int skip_vias;
 
 	int CustomSilkTop , CustomSilkBottom;
+	string CustomSilkArrayTop , CustomSilkArrayBottom;
 
 	board(B) {		gridunit = (B.grid.unit); }
 	string active_layers = list_active_layers();
@@ -361,8 +347,6 @@ if (board) board(B)
 	if( argv[1] == "completed" )
 	{	// after exit( "commands" ) successful, the ULP is called again to display a completion message and check for updates
 		string cmd;
-		cmd += clean_drill_image();
-		sprintf( cmd , "%s layer -%d;\n" , cmd , drill_image_layer );
 		cmd += "display NONE " + active_layers;
 		
 		
@@ -373,7 +357,7 @@ if (board) board(B)
 			{
 				int index = strstr( webpage_full , "current_version" );
 				if( index > 0 )
-				{ 
+				{
 					version_line = strsub( webpage_full , index+16 , 3 );
 					if( strsub( version_line , 1 , 1 ) == "." )
 					{
@@ -397,7 +381,7 @@ if (board) board(B)
 	// path for config file on old versions, something like "C:/Program Files/EAGLE-X.Y/ulp/eagleUp_export.settings.txt"
 	string settings_file = filesetext( argv[0] , ".settings.txt");	// argv[0] is the full path of this ULP
 	
-	if( EAGLE_VERSION == 5 && EAGLE_RELEASE > 9 )
+	if( (EAGLE_VERSION == 5 && EAGLE_RELEASE > 9) || (EAGLE_VERSION == 6) )
 	{
 		
 		/* read parameters from user's eaglerc file, if first run => use default values */
@@ -421,11 +405,15 @@ if (board) board(B)
 		rm_cmd 						= cfgget( "eagleUp.rm_cmd" , 					"" );
 		export_path					= cfgget( "eagleUp.export_path" , 				"" );
 		
-		CustomSilkTop				= strtol( cfgget( "eagleUp.CustomSilkTop" , 		"121" ) );
-		CustomSilkBottom			= strtol( cfgget( "eagleUp.CustomSilkBottom" , 		"122" ) );
+		CustomSilkTop				= strtol( cfgget( "eagleUp.CustomSilkTop" , 		"121" ) );			// discarded
+		CustomSilkBottom			= strtol( cfgget( "eagleUp.CustomSilkBottom" , 		"122" ) );			// discarded
 		
 		skip_vias 				= strtol( cfgget( "eagleUp.skip_vias" , 			"0" ) );		// default => disabled
 		use_jpg_image			= strtol( cfgget( "eagleUp.use_jpg_image" , 		"0" ) );		// default => disabled
+		
+		CustomSilkArrayTop			= cfgget( "eagleUp.CustomSilkArrayTop" , 		"21 25 51" );			
+		CustomSilkArrayBottom		= cfgget( "eagleUp.CustomSilkArrayBottom" , 	"22 26 52" );			
+		
 		//*** 
 		}
 	else
@@ -441,7 +429,7 @@ if (board) board(B)
 		{
 			int nLines = fileread(settings_lines, settings_file);
 			
-			if( nLines >  21 )
+			if( nLines >  23 )
 			{
 				BoardThickness 			= strtod(settings_lines[1]);
 				BoardColorSelected 		= strtol(settings_lines[2]);
@@ -463,11 +451,14 @@ if (board) board(B)
 				rm_cmd 					= settings_lines[16]; // should be declared unused
 				export_path				= settings_lines[17];
 				
-				CustomSilkTop			= strtod(settings_lines[18]);
-				CustomSilkBottom		= strtod(settings_lines[19]);
+				CustomSilkTop			= strtod(settings_lines[18]);			// discarded
+				CustomSilkBottom		= strtod(settings_lines[19]);			// discarded
 				
 				skip_vias 				= strtol(settings_lines[20]);
 				use_jpg_image			= strtol(settings_lines[21]);
+				
+				CustomSilkArrayTop		= settings_lines[22];
+				CustomSilkArrayBottom	= settings_lines[23];
 			
 			}
 			else
@@ -500,31 +491,34 @@ if (board) board(B)
 			rm_cmd 					= "" ;
 			export_path				= "" ;
 			
-			CustomSilkTop			= 121;
-			CustomSilkBottom		= 122;
+			CustomSilkTop			= 121;			// discarded
+			CustomSilkBottom		= 122;			// discarded
 		
 			skip_vias 				= 0 ;		// default => disabled
 			use_jpg_image			= 0 ;		// default => disabled
+			
+			CustomSilkArrayTop 		= "21 25 51" ;
+			CustomSilkArrayBottom	= "22 26 52" ;
 		}
 
 	}
 	
 	string PlatingColors[] = { "silver" , "gold"};
-	string PlatingColorsValue[] = { "silver" , "gold"}; 		// can be hex values if necessary
+	string PlatingColorsValue[] = { "silver" , "gold"}; 		// can be hex values or friendly names
 	string SilkColors[] = { "ivory", "white" , "black"};
-	string SilkColorsValue[] = { "ivory" , "white" , "black"};	// can be hex values if necessary
+	string SilkColorsValue[] = { "ivory" , "white" , "black"};	// can be hex values or friendly names
 	string BoardThicknessUnit[] = {"mm","mils","inch"};
 	int BoardThicknessUnitSelected = 0;		// mm selected by default
 	
 
 	if( model_path == "" )
 	{
-		/* this is the first time eagleUp is launched on this machine */
+		/* this is the first time eagleUp is launched on this computer */
 
 		// welcome message
 		dlgMessageBox( "Welcome to eagleUp.\nThis is the first time you run eagleUp_export.ulp The next window will help you configure your local settings. All your preferences are saved and will be restored when you run eagleUp next time." );
 	
-		// sketchp settings (first time, then can be accessed from the main menu)
+		// sketchp settings (first time, then can be accessed from the main menu button)
 		edit_sketchup_settings();	
 	}
 
@@ -559,10 +553,11 @@ if (board) board(B)
 					dlgRadioButton("(20) Dimension", outline_layer);
 					dlgRadioButton("(46) Milling", outline_layer);
 				}};
-				dlgGroup("Silk layers") { dlgHBoxLayout {
-					dlgRadioButton("Place + Names", silk_layer);
-					dlgRadioButton("Place only", silk_layer);
-					dlgRadioButton("Custom...", silk_layer);
+				dlgGroup("Silk layers") { 	dlgHBoxLayout {
+						dlgRadioButton("Place + Names", silk_layer);
+						dlgRadioButton("Place only", silk_layer);
+						dlgRadioButton("Custom...", silk_layer);
+						dlgRadioButton("None", silk_layer);
 				}};
 				dlgGroup("Misc") { dlgHBoxLayout {
 					dlgCheckBox("Board only (no parts)", board_only);
@@ -684,7 +679,7 @@ if (board) board(B)
 	if( silk_layer == 2 )	// custom
 	{
 
-		int layer_ok = dlgDialog("EagleUp custom layer for silk screen")
+		int layer_ok = dlgDialog("EagleUp custom layer list for silk screen")
 		{
 			dlgHBoxLayout
 			{
@@ -694,15 +689,16 @@ if (board) board(B)
 					dlgStretch(1);
 					
 					dlgGridLayout {
-						dlgCell( 1 , 0 ) dlgLabel("Set the custom layer for top silk screen");
-						dlgCell( 1 , 1 ) dlgIntEdit(CustomSilkTop , 1 , 255);
-						dlgCell( 2 , 0 ) dlgLabel("Set the custom layer for bottom silk screen");
-						dlgCell( 2 , 1 ) dlgIntEdit(CustomSilkBottom , 1 , 255);
+						dlgCell( 1 , 0 ) dlgLabel("Set the custom layers for top silk screen");
+						dlgCell( 1 , 1 ) dlgStringEdit(CustomSilkArrayTop );
+						dlgCell( 2 , 0 ) dlgLabel("Set the custom layers for bottom silk screen");
+						dlgCell( 2 , 1 ) dlgStringEdit(CustomSilkArrayBottom );
+						dlgCell( 3 , 1 ) dlgLabel("(list of layers separated with spaces)");
 					}
 	
 					dlgHBoxLayout {
 						dlgStretch(1);
-						dlgPushButton("+OK") dlgAccept(1);
+						dlgPushButton("+OK") dlgAccept(1);	/// validity checks
 						dlgStretch(1);
 					}
 					dlgStretch(1);
@@ -714,7 +710,7 @@ if (board) board(B)
 	}
 	
 	
-	if( EAGLE_VERSION == 5 && EAGLE_RELEASE > 9 )
+	if( (EAGLE_VERSION == 5 && EAGLE_RELEASE > 9) || (EAGLE_VERSION == 6) )
 	{
 		/* save in user's eaglerc file the settings */
 		//***5.9
@@ -756,17 +752,21 @@ if (board) board(B)
 		cfgset( "eagleUp.rm_cmd" , 					rm_cmd );
 		cfgset( "eagleUp.export_path" , 			export_path );
 		
-		sprintf( str_setting , "%d" , CustomSilkTop );
-		cfgset( "eagleUp.CustomSilkTop" , 			str_setting );
+		sprintf( str_setting , "%d" , CustomSilkTop );					// discarded
+		cfgset( "eagleUp.CustomSilkTop" , 			str_setting );		// discarded
 		
-		sprintf( str_setting , "%d" , CustomSilkBottom );
-		cfgset( "eagleUp.CustomSilkBottom" , 		str_setting );
+		sprintf( str_setting , "%d" , CustomSilkBottom );				// discarded
+		cfgset( "eagleUp.CustomSilkBottom" , 		str_setting );		// discarded
 		
 		sprintf( str_setting , "%d" , skip_vias );
 		cfgset( "eagleUp.skip_vias" , 				str_setting );
 		
 		sprintf( str_setting , "%d" , use_jpg_image );
 		cfgset( "eagleUp.use_jpg_image" , 			str_setting );
+		
+		cfgset( "eagleUp.CustomSilkArrayTop" , 			CustomSilkArrayTop );
+		cfgset( "eagleUp.CustomSilkArrayBottom" , 		CustomSilkArrayBottom );
+		
 		//*** 
 	}
 	else
@@ -791,10 +791,12 @@ if (board) board(B)
 			printf( "%s\n" , composite_cmd );
 			printf( "%s\n" , rm_cmd );
 			printf( "%s\n" , export_path );
-			printf( "%d\n" , CustomSilkTop );
-			printf( "%d\n" , CustomSilkBottom );
+			printf( "%d\n" , CustomSilkTop );			// discarded
+			printf( "%d\n" , CustomSilkBottom );		// discarded
 			printf( "%d\n" , skip_vias );
 			printf( "%d\n" , use_jpg_image );
+			printf( "%s\n" , CustomSilkArrayTop );
+			printf( "%s\n" , CustomSilkArrayBottom );
 		}
 	}
 	
@@ -823,52 +825,6 @@ if (board) board(B)
 	if( no_image == 0 )
 	{
 
-		/* clean any object present on layer drilllayer before use */
-
-		// check if layer 116 already exists
-		int active116=0;
-		board (B) { 
-			B.layers(L) {
-				if(L.number == drill_image_layer)
-					active116=1;
-			} 
-		}
-		
-		if( active116==1)
-		{
-			cmd += clean_drill_image();
-		}
-
-	/* draw drill shapes on layer drilllayer */
-		
-		sprintf( cmd , "%s GRID mm;\nLayer %d drillImage;\nchange layer %d;\n" , cmd , drill_image_layer , drill_image_layer);
-
-		B.holes(H) {
-			sprintf(cmd, "%scircle %.3f (%.3f %.3f) (%.3f %.3f) ;\n", cmd , u2mm(H.drill/2) , u2mm(H.x), u2mm(H.y), u2mm(H.x) + u2mm(H.drill/4), u2mm(H.y) );
-		}
-		B.elements(E)
-		{
-			E.package.holes(H)
-			{
-				sprintf(cmd, "%scircle %.3f (%.3f %.3f) (%.3f %.3f) ;\n", cmd , u2mm(H.drill/2), u2mm(H.x), u2mm(H.y), u2mm(H.x) + u2mm(H.drill/4), u2mm(H.y) );
-			}
-			E.package.contacts(C)
-			{
-				if (C.pad)
-				{
-					sprintf(cmd, "%scircle %.3f (%.3f %.3f) (%.3f %.3f) ;\n", cmd , u2mm(C.pad.drill/2), u2mm(C.pad.x), u2mm(C.pad.y), u2mm(C.pad.x) + u2mm(C.pad.drill/4), u2mm(C.pad.y) );
-				}
-			}
-		}
-		B.signals(S)
-		{
-			S.vias(H)
-			{
-				sprintf(cmd, "%scircle %.3f (%.3f %.3f) (%.3f %.3f) ;\n", cmd , u2mm(H.drill/2) , u2mm(H.x), u2mm(H.y), u2mm(H.x) + u2mm(H.drill/4), u2mm(H.y) );
-			}
-		}
-
-	
 		if( resolution == 0)
 			str_resol = "300";
 		if( resolution == 1)
@@ -883,6 +839,10 @@ if (board) board(B)
 	// unfortunately this uses a system() call and a popup for the user in versions < 5.11
 	if( export_path != "" )
 	{
+	
+		if( (EAGLE_VERSION == 5 && EAGLE_RELEASE < 9) )
+			dlgMessageBox( "You have set an export subfolder. Please make sure this path exists, or an error message will appear." );
+	
 		string a[];
 		int folder_found =0;
 		int nglob = fileglob(a, filedir(B.name) + "*");
@@ -997,9 +957,8 @@ if (board) board(B)
 
 		if( no_image == 0 )
 		{
-			/* generate rectangle covering the board and export it as image, make image placement easier in sketchup */
-			/* layer used for that == 222 (arbitrary, can be modified in the header of this ULP) */
-			
+			/* generate rectangle covering the board and export it as image, make image cropping and placement easier in sketchup */
+			/* layer used for that == 222 (arbitrary, can be modified in the header of this ULP) */	
 			
 			sprintf( cmd , "%s GRID mm;\nLayer %d imagesize;\nchange layer %d;\n" , cmd , imagesize_layer , imagesize_layer );
 
@@ -1012,14 +971,14 @@ if (board) board(B)
 			cmd += "SET PALETTE WHITE;\n";
 			cmd += "WINDOW;\n";
 			cmd += "RATSNEST;\n";
-			cmd += "SET PAD_NAMES OFF;\n";			// forced in case the user has it set (poor result)
+			cmd += "SET PAD_NAMES OFF;\n";			// hide pad name in case they were visible
 
 			cmd += "SET FILL_LAYER tStop 1;\n";
 			cmd += "SET FILL_LAYER bStop 1;\n";
 
 
 			
-			if( EAGLE_VERSION == 5 && EAGLE_RELEASE > 10 )
+			if( (EAGLE_VERSION == 5 && EAGLE_RELEASE > 10) || (EAGLE_VERSION == 6) )
 					cmd += "SET CONFIRM YES;\n";
 
 			cmd += "DISPLAY None Top Pads Vias;\n";
@@ -1043,49 +1002,39 @@ if (board) board(B)
 			else if ( silk_layer == 1)
 				cmd += "DISPLAY None tPlace -tOrigins -tNames -tValues -tDocu;\n";
 			else if ( silk_layer == 2)
-			{
-				sprintf( temp_silk , "%d" , CustomSilkTop );
-				cmd += "DISPLAY None " + temp_silk + ";\n";
-			}
-			cmd += "EXPORT IMAGE \'" + image_prefix + "_top_silk.png' MONOCHROME " + str_resol + ";\n";
+				cmd += "DISPLAY None " + CustomSilkArrayTop + ";\n";
+			if( silk_layer != 3)	// if not NONE
+				cmd += "EXPORT IMAGE \'" + image_prefix + "_top_silk.png' MONOCHROME " + str_resol + ";\n";
 
 			if( silk_layer == 0)
 				cmd += "DISPLAY None bPlace -bOrigins bNames -bValues -bDocu;\n";
 			else if ( silk_layer == 1)
 				cmd += "DISPLAY None bPlace -bOrigins -bNames -bValues -bDocu;\n";
 			else if ( silk_layer == 2)
-			{
-				sprintf( temp_silk , "%d" , CustomSilkBottom );
-				cmd += "DISPLAY None " + temp_silk + ";\n";
-			}
-			cmd += "EXPORT IMAGE \'" + image_prefix + "_bottom_silk.png' MONOCHROME " + str_resol + ";\n";
-
-			cmd += "SET FILL_LAYER drillImage 1;\n";
-			cmd += "DISPLAY None drillImage;\n";
-			cmd += "EXPORT IMAGE \'" + image_prefix + "_drill.png' MONOCHROME " + str_resol + ";\n";
+				cmd += "DISPLAY None " + CustomSilkArrayBottom + ";\n";
+			if( silk_layer != 3)	// if not NONE
+				cmd += "EXPORT IMAGE \'" + image_prefix + "_bottom_silk.png' MONOCHROME " + str_resol + ";\n";
 
 			cmd += "DISPLAY None Dimension;\n";
 			cmd += "EXPORT IMAGE \'" + image_prefix + "_outline.png' MONOCHROME " + str_resol + ";\n";
 			
 			
-			if( EAGLE_VERSION == 5 && EAGLE_RELEASE > 10 )
-					cmd += "SET CONFIRM OFF;\n";
-		
+			if( (EAGLE_VERSION == 5 && EAGLE_RELEASE > 10) || (EAGLE_VERSION == 6) )
+					cmd += "SET CONFIRM OFF;\n";	
 		
 			/* delete rectangle image size */
 			cmd += "DISPLAY None imagesize;\n";
 			sprintf( rect_str , "DELETE (%f %f);\n" , u2mm(minH) , u2mm(minV) );
 			cmd += rect_str;	
-			
-			
+						
 			//delete custom layers
-			sprintf( cmd , "%s layer -%d;\n" , cmd , imagesize_layer );
+			sprintf( cmd , "%s layer '??' -%d;\n" , cmd , imagesize_layer );
 		
 			// Image Directory
 			// Image prefix
 			// Suffix - used to enable future support for vector images
 			// Resolution - enable low / high res alternatives
-			//   last value is a switch between jpg and png for result images
+			//   last value is a switch between jpg and png for final images
 			string result_extension;
 			if( use_jpg_image == 0)
 				result_extension = "png";
@@ -1112,7 +1061,7 @@ if (board) board(B)
 				// Straight line
 				else
 				{
-					printf("outline-line;%.2f;%.2f;%.2f;%.2f;%.2f;\n",
+					printf("outline-line;%f;%f;%f;%f;%f;\n",
 						u2mm(W.x1) , u2mm(W.y1) , u2mm(W.x2) , u2mm(W.y2) , BoardThickness );
 				}
 			}
@@ -1134,13 +1083,13 @@ if (board) board(B)
 				// Arc
 				if( W.arc )
 				{
-					printf("outline-arc;%.2f;%.2f;%.2f;%.2f;%.2f;%.2f;\n",
+					printf("outline-arc;%f;%f;%f;%f;%f;%f;\n",
 						u2mm(W.arc.xc),u2mm(W.arc.yc), u2mm(W.arc.radius), W.arc.angle1, W.arc.angle2, BoardThickness);
 				}
 				// Straight line
 				else
 				{
-					printf("outline-line;%.2f;%.2f;%.2f;%.2f;%.2f;\n",
+					printf("outline-line;%f;%f;%f;%f;%f;\n",
 						u2mm(W.x1) , u2mm(W.y1) , u2mm(W.x2) , u2mm(W.y2) , BoardThickness );
 				}
 			}
@@ -1156,7 +1105,7 @@ if (board) board(B)
 	}
 
 	
-	printf("outline;%.2f;%.2f;%.2f;%.2f;%.1f;\n",
+	printf("outline;%f;%f;%f;%f;%f;\n",
 		u2mm(minH) , u2mm(minV) , u2mm(maxH) , u2mm(maxV) , BoardThickness );
 	printf("outline-complete;%.2f;\n",
 		BoardThickness );
@@ -1168,7 +1117,7 @@ if (board) board(B)
 		B.holes(H)
 		{
 			holes++;
-			printf("hole;%.2f;%.2f;%.2f;%.2f;\n",
+			printf("hole;%.3f;%.3f;%.3f;%.3f;\n",
 				u2mm(H.x) , u2mm(H.y) , u2mm(H.drill)/2 , BoardThickness/2);
 		}
 		
@@ -1177,7 +1126,7 @@ if (board) board(B)
 			E.package.holes(H)
 			{
 				holes++;
-				printf("hole;%.2f;%.2f;%.2f;%.2f;\n",
+				printf("hole;%.3f;%.3f;%.3f;%.3f;\n",
 					u2mm(H.x) , u2mm(H.y) , u2mm(H.drill)/2 , BoardThickness/2 );
 			}
 		}
@@ -1195,7 +1144,7 @@ if (board) board(B)
 				S.vias(V)
 				{
 					holes++;
-					printf("hole;%.2f;%.2f;%.2f;%.2f;\n",
+					printf("hole;%.3f;%.3f;%.3f;%.3f;\n",
 						u2mm(V.x) , u2mm(V.y) , u2mm(V.drill)/2 , BoardThickness/2);
 				}
 			}
@@ -1208,7 +1157,7 @@ if (board) board(B)
 				if (C.pad)
 				{
 					holes++;
-					printf("hole;%.2f;%.2f;%.2f;%.2f;\n",
+					printf("hole;%.3f;%.3f;%.3f;%.3f;\n",
 						u2mm(C.pad.x) , u2mm(C.pad.y) , u2mm(C.pad.drill)/2 , BoardThickness/2 );
 				}
 			}
@@ -1263,7 +1212,7 @@ if (board) board(B)
 					//***5.9
 					if( EAGLE_VERSION >= 5 )
 					{	// it is possible to specify a different model name than the footprint name, also in the schematics and board, possible to overide the attribute
-						E.attributes(A)
+					E.attributes(A)
 						{
 							if( A.name == "EAGLEUP" )
 								if( A.value != "" )
@@ -1271,6 +1220,9 @@ if (board) board(B)
 									attr_str = A.value;
 									nb_fields_attr = strsplit( temp_str , attr_str , ';' );	// name and arguments are ; separated
 									
+									// temp_str[0] => file name to use for the 3d model (overrides package name)
+									// temp_str[1] => custom orientation of the part, rotation and mirror
+									// temp_str[2] => Z-axis offset
 									
 									while( strsub( temp_str[0] , 0 , 1) == " " )	// remove all spaces at beginning and end of temp_str[0]
 										temp_str[0] = strsub( temp_str[0] , 1);
@@ -1281,11 +1233,61 @@ if (board) board(B)
 										package_name = temp_str[0];					// name of part is first
 									if( nb_fields_attr > 1)
 									{
-										while( strsub( temp_str[1] , 0 , 1) == " " )	// remove all spaces at beginning and end of temp_str[0]
+										while( strsub( temp_str[1] , 0 , 1) == " " )	// remove all spaces at beginning and end of temp_str[1]
 											temp_str[1] = strsub( temp_str[1] , 1);
 										while( strsub( temp_str[1] , strlen(temp_str[1])-1) == " " )
 											temp_str[1] = strsub( temp_str[1] , 0 , strlen(temp_str[1])-1);
 									
+										if( nb_fields_attr > 2)
+										{
+									
+											while( strsub( temp_str[2] , 0 , 1) == " " )	// remove all spaces at beginning and end of temp_str[2]
+												temp_str[2] = strsub( temp_str[2] , 1);
+											while( strsub( temp_str[2] , strlen(temp_str[1])-1) == " " )
+												temp_str[2] = strsub( temp_str[2] , 0 , strlen(temp_str[2])-1);
+											
+											string z_unit = "mm"; // default unit
+											if( strlwr( strsub( temp_str[2] , strlen(temp_str[2])-3) ) == "mm" )
+											{
+												z_unit = "mm";
+												temp_str[2] = strsub( temp_str[2] , 0 , strlen(temp_str[2])-2);
+											}
+											else if( strlwr( strsub( temp_str[2] , strlen(temp_str[2])-3) ) == "in" )
+											{
+												z_unit = "in";
+												temp_str[2] = strsub( temp_str[2] , 0 , strlen(temp_str[2])-2);
+											}
+											else if( strlwr( strsub( temp_str[2] , strlen(temp_str[2])-4) ) == "mil" )
+											{
+												z_unit = "mil";
+												temp_str[2] = strsub( temp_str[2] , 0 , strlen(temp_str[2])-3);
+											}
+											else if( strlwr( strsub( temp_str[2] , strlen(temp_str[2])-5) ) == "mils" )
+											{
+												z_unit = "mils";
+												temp_str[2] = strsub( temp_str[2] , 0 , strlen(temp_str[2])-4);
+											}
+											
+											while( strsub( temp_str[2] , strlen(temp_str[2])-1) == " " )			// clean ending
+												temp_str[2] = strsub( temp_str[2] , 0 , strlen(temp_str[2])-1);
+											
+											// replace any comma by a dot
+											string z_array[];
+											strsplit(z_array, temp_str[2], ','); 
+											temp_str[2] = strjoin(z_array, '.'); 
+											
+											real z_offset = strtod( temp_str[2] );	// conversion to decimal
+											if( z_unit == "mm" )
+												z += z_offset;
+											if( z_unit == "in" )
+												z += z_offset * 25.4;				// unit conversion
+											if( z_unit == "mil" )
+												z += z_offset * 25.4 / 1000;
+											if( z_unit == "mils" )
+												z += z_offset * 25.4 / 1000;
+												
+										}
+										
 										z2=z;
 										angle2=angle;
 										offset=0;
@@ -1302,21 +1304,15 @@ if (board) board(B)
 										}
 										angle2 = (angle2>=360.0) ? ( angle2 - 360.0) : ( angle2); // modulus
 										angle2 = (angle2>=360.0) ? ( angle2 - 360.0) : ( angle2); // modulus
-										
-										if( angle==angle2 && z==z2 )
-											dlgMessageBox( "please check the syntax of attribute EAGLEUP of part " + E.name + " :\n" + A.value);
-										else
-										{
 											angle = angle2;
 											z= z2;
-										}
 									}
 								}
 						}
 						package_name = replace_string( package_name , ".skp" , "" );
 					}
 					//***
-					printf("package;%s;%.2f;%.2f;%.0f;%s;%s;%.1f;\n",
+					printf("package;%s;%.3f;%.3f;%.0f;%s;%s;%.3f;\n",
 						E.name, u2mm(E.x), u2mm(E.y), angle, E.value, package_name, z);
 				}
 			}
