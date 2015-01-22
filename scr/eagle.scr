@@ -35,6 +35,8 @@ Change Isolate 0.012; #BHW Change polygon isolate to 12mil
 Change Font Vector; #Make text on board in vector font
 Change Ratio 15;
 
+CHANGE DUNIT INCH OFF #BHW Change default units to inches [ON | OFF] [precision]
+
 #changes background color of board to black
 SET PALETTE BLACK;
 
