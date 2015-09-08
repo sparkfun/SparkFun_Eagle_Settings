@@ -196,11 +196,11 @@ Colors=" 1 2 1 2 1 2 1 2 1 2 1 2 1 2 1 2 6 6 4 8 8 8 8 8 8 8 8 8 8 8 8 8 4 4 1 1
 [Sec_11]
 Name[en]="Drill File"
 Prompt=""
-Device="EXCELLON"
+Device="EXCELLON_24"
 Wheel=""
 Rack=""
 Scale=1
-Output=".TXT"
+Output=".XLN"
 Flags="0 0 0 1 0 1 1"
 Emulate="0"
 Offset="0.0mil 0.0mil"
