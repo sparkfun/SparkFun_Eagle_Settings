@@ -1,4 +1,4 @@
-#usage  "en:<nobr><b>SparkFun Eagle CAD Setup ULP</b>"
+#usage  "en:<nobr><b>SparkFun EAGLE CAD Setup ULP</b>"
         "<p>"
         "<a href="https://raw.githubusercontent.com/sparkfun/SparkFun_Eagle_Settings/master/ulp/SparkFunConfig.ulp">This ULP</a> sets up EAGLE to the default SparkFun\
           Electronics configuration.<br>"
