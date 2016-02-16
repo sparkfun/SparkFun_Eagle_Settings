@@ -404,7 +404,7 @@ void openDialog(void)
   int dialogActive = 1;
   while(dialogActive)
   {
-    dlgDialog("SparkFun Eagle CAD Configuration Tool")
+    dlgDialog("SparkFun EAGLE Configuration Tool")
     {
       dlgVBoxLayout
       {
