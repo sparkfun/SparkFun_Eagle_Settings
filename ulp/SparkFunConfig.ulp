@@ -429,9 +429,7 @@ void configureSettings(void)
 
 void warnAboutSpeed(void)
 {
-  dlgMessageBox("Be patient while files download!\n• This can take some time."
-    + "\n• You will get a dialog box on error or\n• configuration tool will "
-    + "go away on success.\n• Current download is shown in status bar.");
+  dlgMessageBox("<b>Be patient while files download!</b><ul><li>This can take some time.</li><li>You will get a dialog box on error or</li><li>configuration tool will go away on success.</li><li>Current download is shown in status bar.</li></ul>");
 }
 
 
@@ -460,6 +458,7 @@ void doConfiguration(void)
       configureSettings();
       break;
     case 2 :  // Download only
+      warnAboutSpeed();
       if (installLBRs)
         downloadLBRs();
       if (installDRUs)
