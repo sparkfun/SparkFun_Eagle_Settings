@@ -15,7 +15,7 @@
 // 1.0.0 - 2016-02-15 --- Initial version
 
 #require 6.0000
-string Version = "1.0.3";
+string Version = "1.1.0";
 
 // Source configuration this section will need to be manually updated if the
 // structure on GitHub changes
