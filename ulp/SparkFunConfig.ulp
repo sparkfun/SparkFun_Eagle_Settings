@@ -9,12 +9,13 @@
 // THIS PROGRAM IS PROVIDED AS IS AND WITHOUT WARRANTY OF ANY KIND, EXPRESSED
 // OR IMPLIED
 
+// 1.0.3 - 2016-03-21 --- Fixed perm config by parsing & careful mod eagle.scr
 // 1.0.2 - 2016-03-16 --- UI tweaks & permanent now appends to stock eagle.scr
 // 1.0.1 - 2016-03-01 --- Added SparkFun logo
 // 1.0.0 - 2016-02-15 --- Initial version
 
 #require 6.0000
-string Version = "1.0.2";
+string Version = "1.0.3";
 
 // Source configuration this section will need to be manually updated if the
 // structure on GitHub changes
@@ -324,10 +325,59 @@ void downloadCAMs(void)
 ////////////////////////////////////////////////////////////////////////////////
 void appendConfigurationScript(void)
 {
-  output(EAGLE_DIR + "/scr/eagle.scr", "at")
+  string lines[];
+  string eagleScript = EAGLE_DIR + "/scr/eagle.scr";
+
+  // Read existing eagle.scr to modify.
+  int numberOfLines = fileread(lines, eagleScript);
+
+  if (numberOfLines >= 0) // Make sure file was read
   {
-    // Append call to our configuration script
-    printf("SCRIPT " + localSCRDir + "configureLibraries.scr\n");
+    // Check to see if we've already modified this file, if so bail
+    for(int i = 0; i < numberOfLines; ++i)
+    {
+      if (strrstr(lines[i],"SCRIPT "+localSCRDir+"configureLibraries.scr") >= 0)
+      {
+        dlgMessageBox("Looks like EAGLE is already configured to run\nthe " +
+                      "SparkFun configuration");
+        return;
+      }
+    }
+
+    fileerror();
+    output(eagleScript, (permanent) ? "wtF" : "wtDF")
+    {
+      for(int i = 0; i < numberOfLines; ++i)
+      {
+        // Insert call to to SFE script before SCH section AKA in the BRD sect
+        // This simple look for first instance method seems to sufficeient do
+        // to the way EAGLE parses scripts. They don't seem to allow multiple
+        // sections of the same type. This relies on BRD being before SCH.
+        if (strrstr(lines[i], "SCH:") >= 0)
+        {
+          printf("SCRIPT " + localSCRDir + "configureLibraries.scr;\n");
+          printf(lines[i] + "\n");
+        }
+        // This assumption is a stretch. LBR currently follows SCH.
+        else if (strrstr(lines[i], "LBR:") >= 0)
+        {
+          printf("SCRIPT " + localSCRDir + "configureLibraries.scr;\n");
+          printf(lines[i] + "\n");
+        }
+        else  // Write anything else like normal
+        {
+          printf(lines[i] + "\n");
+        }
+      }
+    }
+    if (fileerror())
+    {
+      exit(1);
+    }
+  }
+  else // File wasn't read or was empty.
+  {
+    dlgMessageBox("eagle.scr wasn't read configuration has failed.");
   }
 }
 
@@ -339,6 +389,8 @@ void writeConfigurationScript(void)
   output(localSCRDir + "configureLibraries.scr", (permanent) ? "wt" : "wtD")
   {
     // Check to see if a library exist for USE command. Checking a 'random' one
+    // TODO: This can cause issues when downkoaded to custom path, but not
+    // selected when configure is run.
     if (filesize(localLBRDir + libraries[2]) > 0)
     {
       printf("USE -*\n");
@@ -639,6 +691,11 @@ void updateULP(void)
 
 void main(void)
 {
+  if (library)  // The USE command isn't valid in lbr view, so config fails
+  {
+    dlgMessageBox("Only run this ULP in a schematic or board");
+    exit(-1);
+  }
   updateULP();
   openDialog();
 }
