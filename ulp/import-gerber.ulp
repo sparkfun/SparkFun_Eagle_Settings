@@ -1,0 +1,2665 @@
+#usage "<b>Import Gerber files into EAGLE</b><p>\n"
+"Run ULP on board file to import Gerber data.<BR>"
+"Version: 0.1 - Development Started<br/>"
+"Version: 0.2 - Add functionality, improved performance. - 9-20-15<br/>"
+"Version: 0.3 - Performance, functionality for layer selection. - 9-27-15<br/>"
+"Version: 0.4 - Performance improvement. Changed to += - 10-5-15<br/>"
+"Version: 0.5 - Add param handling to macros. Load .scr file when generated. Updates to extension to layer mappings - 10-26-15<br/>"
+"Version: 0.6 - Updates to polygon aperture wire draw - 10-28-15<br/>"
+"Version: 0.7 - Updates to improve usability - 11-2-15<br/>"
+"Version: 0.8 - Additional tweaks - 11-4-15<br/>"
+"Version: 0.9 - Handle apertures like D0XX and convert to DXX. - 11-13-15<br/>"
+"Version: 0.10 - Added help dialog - 11-16-15<br/>"
+"</p>"
+"<author>Author: marc.battistello@gmail.com</author>"
+
+#require 7.0000
+string version = "0.10";  //ulp version
+
+
+//global vars
+enum{ false, true }   //0, 1
+
+int DebugMode = false;
+string UlpPath = "";
+
+string ImageUrl = "http://www.simplifiedsolutionsinc.com/EAGLETo3D/gerber/";
+
+string HelpText = "<h1>Gerber Import Instructions</h1>"
+     "<h2>Summary</h2>"
+     "<span>The Gerber Import ULP can be used to reverse engineer a Gerber file into an EAGLE board file. The import process will extract the data from the Gerber file and then load the file to the specified layer. The importer is designed to work on the RS-274X specification.</span>"
+     "<span>The import process occurs in two steps. First the file is loaded and preprocessing occurs. Preprocessing includes mapping of the Gerber file extension to an appropriate EAGLE layer, interpretation of the format specification, loading of the aperture definitions and macros, and compilation of all points in the file. The second step is the Import which converts the data points into EAGLE wires.</span><br><br><span>During the import process the ULP tries to map all data into appropriate EAGLE data. Gerber format is a lower fidelity than an EAGLE board file so some elements may not map directly. Below is a list of the known areas that the the EAGLE board will not match the Gerber file.</span><ul><li>Complex Apertures - Complex apertures cannot be used in draw operations as EAGLE wires can only have round or flat shapes. Rectangles, Polygons, and complex changes will be drawn as circles with the diameter extracted from the aperture.</li><li>Area Fills - G36/37 commands, which represent area fills, cannot be represented in EAGLE. Only the outlines of the areas will be drawn.</li><li>Polarity (LPD/LPC) - EAGLE does not have a concept of dark/clear polarity so if the Gerber file is using this concept the board file man not look as expected. All outlines will be drawn as wires in EAGLE regardless of the polarity.</li><li>Circular Commands ( G02/03 and G75)- All circular commands are draw as straight line wires.</li></ul>"
+     "<h2>How to Run</h2>"
+     "<span>To run the import first click the Select button and navigate to your Gerber file.  Once the board has been loaded click the Import button and the Gerber file will be translated to EAGLE wire commands and loaded. If you have additional Gerber files to load you can continue to run the ULP until all Gerber files are loaded.</span>"
+     "<h2>User Interface</h2>"
+     "<span>The ULP UI is shown below. Details of the individual user interface elements are outlined below.</span><BR>"
+     "<img src=\"" + ImageUrl + "gerber_ui_full.jpg\" alt=\"Full UI\">"
+     "<table border=1>"
+     "<tr><th>UI Element</th><th>Description.</th></tr>"
+     "<tr><td><img src=\"" + ImageUrl + "gerber_ui_select.jpg\" alt=\"Select\"></td><td>Select button used to pick the Gerber file to import. Once a file is selected it will be automatically loaded.</td></tr>"
+     "<tr><td><img src=\"" + ImageUrl + "gerber_ui_import.jpg\" alt=\"Import\"></td><td>Import button used to import the Gerber into EAGLE. Once clicked the data points will be used to generate the EAGLE wire commands to represent the board in EAGLE.</td></tr>"
+     "<tr><td><img src=\"" + ImageUrl + "gerber_ui_progress.jpg\" alt=\"Progress Bar\"></td><td>Load process indicator is used to show the progress on loading the Gerber file. Gerber files can often be very large and there is a lot of text processing going on. This indicatory shows you the current status.</td></tr>"
+     "<tr><td><img src=\"" + ImageUrl + "gerber_ui_file_attrs.jpg\" alt=\"File Attributes\"></td><td>File Attributes shows the units, format specification, and parsed format specification values the ULP is using.</td></tr>"
+     "<tr><td><img src=\"" + ImageUrl + "gerber_ui_layer.jpg\" alt=\"Layer\"></td><td>Import Layer is the EAGLE layer the Gerber commands will be loaded to. The ULP looks at the Gerber file extension and tries to make common extensions to the proper EAGLE layer. You can override the value selected by updating this value.</td></tr>"
+     "<tr><td><img src=\"" + ImageUrl + "gerber_ui_debug.jpg\" alt=\"Debug Options\"></td><td>The lower portion of the File Attributes includes additional settings that can be used to import and debug the ULP."
+     "<ul><li><b>Write to SCR:</b> This option writes the EAGLE commands to a file that can be saved or loaded separately. For very large Gerber files its recommended you write the wire commands to a SCR file for better performance.</li>"
+     "<li><b>Debug Mode:</b> This option writes a debug mode that can be used by support to troubleshoot import issues. Normally this option is disabled as it will impact the performance of the ULP when enabled.</li>"
+     "<li><b>Thin Wire Mode:</b> This mode uses 0.0 width wires for aperture draws. This mode is recommended to be enabled for most Gerber files.</li>"
+     "<li><b>Run Ulp Again:</b> This will cause the ULP to run automatically after importing a file. This option is useful for loading multiple Gerber files into a single EAGLE board file.</li></ul>"
+     "</td></tr>"
+     "<tr><td><img src=\"" + ImageUrl + "gerber_ui_apertures.jpg\" alt=\"Apertures\"></td><td>Aperture Definitions and Macros are parsed from the Gerber file and displayed in these tables. Reviewing these can be helpful if your Apertures are not being shown as expected.</td></tr>"
+     "<tr><td><img src=\"" + ImageUrl + "gerber_ui_proc_messages.jpg\" alt=\"Processing Messages\"></td><td>Processing Messages displays warnings of data in the Gerber which could not be properly rendered in EAGLE. The Gerber specification is designed to be used by light plotters to draw the board surface. Some elements of the Gerber file cannot be replicated in EAGLE and when the ULP encounters these situations it logs a message here so you are aware of any deviations from the Gerber file.</td></tr>"
+     "</table>";
+
+
+
+//global UI parametes
+string LogView = "";  //holds logging messages from gerber load
+string Progress = "Select file to Import";  //shows load and import progress bars
+string Layers[];  //holds list of layers in board
+
+string LayerMap[];  //file name to layers mapping
+
+int DoImport = false;  //used to run import but not actually trigger import
+int WriteCommandsToFile = false;
+int WriteCommandThreshold = 1000000;  //if gerber file has more than this many lines it will force to file
+string CommandString = "";
+
+int EAGLELayerSelection = -1;  //used to set selected layer to import to based on gerber file extension
+
+int FileLoaded = false;
+
+int UseThinMode = true;
+int RunUlpAgain = true;
+
+enum{ INCH, MM }
+string UnitsString[] = { "Inch", "MM" };
+int Units;
+//string UnitsString = "";
+string CoordFormat;
+
+enum{ multi, single }
+int QuadMode = multi;
+string QuadModeString[] = { "Multi", "Single" };
+
+
+//op codes
+int OpCodeCounter = 0;
+string OpCodes[];
+
+real CurrentX = 0.0;
+real CurrentY = 0.0;
+real CurrentI = 0.0;
+real CurrentJ = 0.0;
+
+//format spec
+int XIntegerSize = 0;
+int XDecimalSize = 0;
+
+int YIntegerSize = 0;
+int YDecimalSize = 0;
+
+enum{ zeroOmmLeading, zeroOmmTrailing }
+enum{ absNotation, incNotation }
+int ZeroOmmission = zeroOmmLeading;
+int ValueNotation = absNotation;
+string ZeroOmmissionString[] = { "Zero Leading", "Zero Trailing" };
+string ValueNotationString[] = { "Absolute", "Incremental" };
+
+//aperture definitions and macros
+string ApertureDefs[];
+string ApertureMacros[];
+
+int ApDefCounter = 0;
+int ApMacCounter = 0;
+
+//init aperture arrays with headers
+ApertureDefs[ ApDefCounter ] = "id\tdefinition";
+ApDefCounter++;
+
+ApertureMacros[ ApMacCounter ] = "id\tmacro";
+ApMacCounter++;
+
+string CurrentAperture = "";
+
+//comments
+string Comments[];
+int CommentCounter = 0;
+
+//attributes
+string Attributes[];
+int AttributeCounter = 0;
+
+//processing exceptions
+string ParseExceptions[];    //Line\tException messsage
+int ParseExcepCounter = 0;
+
+ParseExceptions[ ParseExcepCounter ] = "Id\tException Message";
+ParseExcepCounter++;
+
+int HasFillCommand = false;
+
+
+int SignalCount = 0;
+
+//******************* general utils *******************//
+string itos(int num) {
+ string temp;
+
+ sprintf(temp, "%d", num);
+
+ return temp;
+ }
+
+string rtos(real num) {
+ string temp;
+
+ sprintf(temp, "%f", num);
+
+ return temp;
+ }
+
+string GetStartDir(){
+ string dir = cfgget("ulp.gerberimport.startdir", UlpPath);
+
+ return dir;
+ }
+
+void SaveStartDir( string fileName ){
+ cfgset("ulp.gerberimport.startdir", filedir( fileName ) );
+ }
+//******************* gerber utils *******************//
+
+void AddLogMessage( string msg ){
+ if( DebugMode ){
+  LogView += msg + "\n";
+  }
+ }
+
+void WriteLog(){
+ if( DebugMode ){
+ output( UlpPath + "log.txt", "wt") {
+  printf( LogView );
+  }
+ }
+
+ }
+
+void ResetLogMessage(){
+ LogView = "";
+ }
+
+void ResetExceptions(){
+
+ for( int i = 0; i < ParseExcepCounter; i++ ){
+  ParseExceptions[ i ] = "";
+  }
+
+ ParseExcepCounter = 0;
+
+ ParseExceptions[ ParseExcepCounter ] = "Id\tException Message";
+ ParseExcepCounter++;
+
+ }  //end func
+
+void ResetApertures(){
+
+ //reset defs
+ for( int i = 0; i < ApDefCounter; i++ ){
+  ApertureDefs[ i ] = "";
+  }
+
+ ApDefCounter = 0;
+
+ ApertureDefs[ ApDefCounter ] = "id\tdefinition";
+ ApDefCounter++;
+
+ //reset macs
+ for( i = 0; i < ApMacCounter; i++ ){
+  ApertureMacros[ i ] = "";
+  }
+
+ ApMacCounter = 0;
+
+ ApertureMacros[ ApMacCounter ] = "id\tmacro";
+ ApMacCounter++;
+
+
+ }  //end func
+
+void ResetOpCodes(){
+
+ for( int i = 0; i < OpCodeCounter; i++ ){
+  OpCodes[ i ] = "";
+  }
+
+ OpCodeCounter = 0;
+
+ }  //end func
+
+void AddException( string msg ){
+
+ ParseExceptions[ ParseExcepCounter ] = itos( ParseExcepCounter ) + "\t" + msg;
+
+ ParseExcepCounter++;
+ }  //end func
+
+string GetExceptionMsgs(){
+
+ string msg;
+
+ for( int i = 0; i < ParseExcepCounter; i++ ){
+
+  msg = msg + ParseExceptions[ i ] + "\n";
+  }
+
+ return msg;
+ }
+
+
+
+
+string GetProgressBar( int numLines, int currentLine, string msg ){
+
+ if( currentLine == 0 ){
+  currentLine = 1;
+  }
+
+ int percent = (currentLine * 100) / numLines;
+
+ int scalePer = percent / 5;  //25 -> 5, 50 -> 10, 75 -> 15, etc
+ string scaleStr = "";
+
+ for( int i = 0; i < 20; i++ ){
+
+  if( i < scalePer ){
+   scaleStr = scaleStr + "*";
+   }
+  else{
+   scaleStr = scaleStr + " ";
+   }  //end if-else
+  }  //end for
+
+ return itos( percent ) + "% [" + scaleStr + "] " + msg;
+ }
+
+
+string RemoveNegatives(string dirtyString) {
+
+ string cleanedString;
+
+ for (int i = 0; dirtyString[i]; ++i) {
+  if (dirtyString[i] == '-') {
+   cleanedString += "";
+   }
+  else {
+   cleanedString += dirtyString[i];
+   }  //end if-else
+  }  //end for
+
+ return cleanedString;
+ }  //end sub
+
+
+string ReplaceString( string dirtyString, string stringToReplace, string newString ){
+
+ int index = strstr( dirtyString, stringToReplace );
+ int replaceLen = strlen( stringToReplace );
+
+ if( index >= 0 ){
+
+  string front = strsub( dirtyString, 0, index );
+  string back = strsub( dirtyString, index+replaceLen, strlen( dirtyString ) - index - replaceLen );
+
+  //dlgMessageBox( dirtyString + ":" + front + back );
+
+  return front + newString + back;
+
+  }
+ else{
+
+  return dirtyString;
+  }  //end if-else
+
+ }  //end func
+
+string RemoveG54( string dirtyString ){
+
+ int index = strstr( dirtyString, "G54" );
+
+ if( index >= 0 ){
+
+  string front = strsub( dirtyString, 0, index );
+  string back = strsub( dirtyString, index+3, strlen( dirtyString ) - index - 3 );
+
+  dlgMessageBox( dirtyString + ":" + front + back );
+
+  return front + back;
+
+  }
+ else{
+
+  return dirtyString;
+  }  //end if-else
+
+ }  //end sub
+
+
+int MapFileNameToLayer( string fileName ){
+ /*
+ *.cmp Top, Via, Pad……………Component side
+ *.ly2 Route2, Via, Pad……….Inner signal layer
+ *.ly3 Route3, Via, Pad……….Inner signal layer
+ *.sol Bot, Via, Pad……………Solder side
+ *.plc tPl, Dim, tName,…….….Silkscreen component side
+ *.pls bPl, Dim, bName,………Silkscreen solder side
+ *.stc tStop ………………….…Solder stop mask component side
+ *.sts bStop …………………...Solder stop mask solder side
+ *.drd Drills, Holes…………….Drill data for NC drill
+
+ .cmp cmp is component side copper (TOP)
+.sec .Sol (Solder Side)
+.smc .Stc (Solder Stop Mask, Top Side)
+.sms .Sts (Solder Stop Mask, Bottom Side)
+.ssc .plc (Component Side Silk Data)
+.sss .pls (Solder Side Silk Data)
+.drl .Drl (Excellon Tool List)
+.drd Drd. (Excellon NC Drill file)
+.dri Dri. (Drill Station Info File)
+.gpi gpi is gerber plot information
+.brd brd is eagle board fiel, cad tool (eagle native file format)
+
+
+
+ */
+
+ string layerName = "Top";
+ int layerIndex = -1;
+ int foundMatch = true;
+
+ //convert file name to all lower case
+ fileName = strlwr( fileName );
+
+ if( strxstr( fileName, "\.cmp" ) >= 0 ){
+  layerName = "Top";
+  }
+ else if( strxstr( fileName, "\.ly2" ) >= 0 ){
+  layerName = "Layer2";
+  }
+ else if( strxstr( fileName, "\.ly3" ) >= 0 ){
+  layerName = "Layer3";
+  }
+ else if( strxstr( fileName, "\.l15" ) >= 0 ){
+  layerName = "Pads";
+  }
+ else if( strxstr( fileName, "\.crc" ) >= 0 ){
+  layerName = "tCream";
+  }
+ else if( strxstr( fileName, "\.crs" ) >= 0 ){
+  layerName = "bCream";
+  }
+ else if( strxstr( fileName, "\.mil" ) >= 0 ){
+  layerName = "Milling";
+  }
+ else if( strxstr( fileName, "\.dim" ) >= 0 ){
+  layerName = "Dimension";
+  }
+ else if( strxstr( fileName, "\.fic" ) >= 0 ){
+  layerName = "tFinish";
+  }
+ else if( strxstr( fileName, "\.fis" ) >= 0 ){
+  layerName = "bFinish";
+  }
+ else if( strxstr( fileName, "\.glc" ) >= 0 ){
+  layerName = "tGlue";
+  }
+ else if( strxstr( fileName, "\.gls" ) >= 0 ){
+  layerName = "bGlue";
+  }
+ else if( strxstr( fileName, "\.sol" ) >= 0 || strxstr( fileName, "\.sec" ) >= 0  ){
+  layerName = "Bottom";
+  }
+ else if( strxstr( fileName, "\.plc" ) >= 0 || strxstr( fileName, "\.ssc" ) >= 0 ){
+  layerName = "tPlace";
+  }
+ else if( strxstr( fileName, "\.pls" ) >= 0 || strxstr( fileName, "\.sss" ) >= 0 ){
+  layerName = "bPlace";
+  }
+ else if( strxstr( fileName, "\.stc" ) >= 0 || strxstr( fileName, "\.smc" ) >= 0 ){
+  layerName = "tStop";
+  }
+ else if( strxstr( fileName, "\.sts" ) >= 0 || strxstr( fileName, "\.sms" ) >= 0  ){
+  layerName = "bStop";
+  }
+ else if( strxstr( fileName, "\.drd" ) >= 0 ){
+  layerName = "Drills";
+  }
+ else if( strxstr( fileName, "\.hol" ) >= 0 ){
+  layerName = "Holes";
+  }
+ else{
+  foundMatch = false;
+  }
+
+
+ //find match in layer list
+ int layerCount = 0;
+
+ board(B){
+  B.layers(L){
+
+   if( L.name == layerName ){
+    layerIndex = layerCount;
+    }
+
+   layerCount++;
+   }  //layers loop
+  }  //board loop
+
+ if( foundMatch ){
+  dlgMessageBox( "Recommended layer '" + layerName + "' has been selected based on file extension. Change the Layer dropdown if you want to import to another layer." );
+ }
+ else{
+  dlgMessageBox( "No match found for file extension of Gerber file. Layer defaulted to Top. Change the Layer dropdown if you want to import to another layer." );
+  }  //end if-else
+
+ return layerIndex;
+
+ }  //end func
+
+
+//******************* gerber functions *******************//
+
+
+void WriteCommands( string command ){
+
+ //command path
+ string file = UlpPath + "commands_" + itos( EAGLELayerSelection ) + ".scr";
+
+ //check if in simluate mode
+ if( DoImport ){
+  //check if commands have been written yet. if not then force creation of new file
+  if( CommandString == "" && WriteCommandsToFile ){
+   output( file, "wt") {
+    //dlgMessageBox( "Writing command file to " + file );
+    }  //end output
+   }  //end if
+
+  if( WriteCommandsToFile ){
+   //open file and write command
+   output( file, "at") {
+    printf( command );
+    }  //end output
+
+   //init command string so that the init file is not run each time
+   if( CommandString == "" ){
+    CommandString = "TOFILE";
+    }  //end if
+
+   }
+  else{
+   //append to string
+   CommandString += command;
+   }  //end if-else
+  }
+ else{
+  //if false then do nothing
+
+  }  //end if-else
+
+ }  //end func
+
+
+//******************* aperture def wire width functions *******************//
+string CircleApertureWireWidth( string aperture ){
+ //%ADD10C,.025*% - Circle, 0.025 diameter
+ //      0123456
+
+ int firstCommaInd = strstr( aperture, "," );
+ int xFound = strstr( aperture, "X" );
+ string changeWidth = "";
+
+ //check if circle aperture has x which means its complex
+ if( xFound >= 0 ){
+  //%ADD23C,.100X.050X.050*% - (c) 0.10 dia circle with 0.05 square hole on d23.
+  //C,.100X.050X.050*%
+  //012345678901234567
+
+  AddException( "Complex circle aperture found. Using diameter for width." );
+
+  //trim off complex part
+  aperture = strsub( aperture, 0, xFound );
+  }
+
+ changeWidth = strsub( aperture, (firstCommaInd+1), strlen( aperture ) - firstCommaInd );
+
+ changeWidth = "CHANGE WIDTH " + changeWidth + ";\n";
+
+ return changeWidth;
+ }
+
+string RectApertureWireWidth( string aperture ){
+ //%ADD10R,.050x.050x.027*% - Rectangle, 0.05x0.05 sides with 0.027 round hole
+
+
+ int firstCommaInd = strstr( aperture, "," );
+ int xFound = strstr( aperture, "X" );
+ string changeWidth = "";
+
+ //check if circle aperture has x which means its complex
+ if( xFound >= 0 ){
+  //%ADD10R,.050x.050x.027*%
+  //R,.050x.050x.027*%
+  //012345678901234567
+
+  AddException( "Complex rectangle aperture found. Setting wire width to width of rectangle." );
+
+  //trim off complex part
+  aperture = strsub( aperture, 0, xFound );
+  }
+
+ changeWidth = strsub( aperture, (firstCommaInd+1), strlen( aperture ) - firstCommaInd );
+
+ changeWidth = "CHANGE WIDTH " + changeWidth + ";\n";
+
+ return changeWidth;
+ }
+
+string OBroundApertureWireWidth( string aperture ){
+ //%ADD10O,.030x.040x.015*% - obround with 0.03x0.04 with 0.015 dia hole
+
+
+ int firstCommaInd = strstr( aperture, "," );
+ int xFound = strstr( aperture, "X" );
+ string changeWidth = "";
+
+ //check if circle aperture has x which means its complex
+ if( xFound >= 0 ){
+  //%ADD10R,.050x.050x.027*%
+  //R,.050x.050x.027*%
+  //012345678901234567
+
+  AddException( "Complex obround aperture found. Unable to render. Setting to circle." );
+
+  //trim off complex part
+  aperture = strsub( aperture, 0, xFound );
+  }
+
+ changeWidth = strsub( aperture, (firstCommaInd+1), strlen( aperture ) - firstCommaInd );
+
+ changeWidth = "CHANGE WIDTH " + changeWidth + ";\n";
+
+ return changeWidth;
+ }
+
+string PolygonApertureWireWidth( string aperture ){
+ //%ADD10P,.016X6*% - 6 vertex polygon with 0.016 outer dia
+
+ int firstCommaInd = strstr( aperture, "," );
+ int xFound = strstr( aperture, "X" );
+ string changeWidth = "";
+
+ //check if circle aperture has x which means its complex
+ if( xFound >= 0 ){
+  //%ADD10R,.050x.050x.027*%
+  //R,.050x.050x.027*%
+  //012345678901234567
+
+  AddException( "Complex polygon aperture found. Unable to render for D01/02 operations. Setting  aperture to circle." );
+
+  //trim off complex part
+  aperture = strsub( aperture, 0, xFound );
+  }
+
+ changeWidth = strsub( aperture, (firstCommaInd+1), strlen( aperture ) - firstCommaInd );
+
+ changeWidth = "CHANGE WIDTH " + changeWidth + ";\n";
+
+ return changeWidth;
+ }
+
+string GetWireWidth( string aperture ){
+
+ //get aperture def from lookup
+ string definition = lookup( ApertureDefs, aperture, "definition" );
+
+ //TODO - If AD points to AM then you need to do lookup on ApertureMacros to get diameter?
+
+ if( definition == "" ){
+  AddException( "Unknown aperture '" + aperture + "' provided. Unable to map. No wire width set." );
+  return "";
+  }
+
+ /*
+ %ADD10C,.025*% - Circle, 0.025 diameter
+ %ADD10R,.050x.050x.027*% - Rectangle, 0.05x0.05 sides with 0.027 round hole
+ %ADD10O,.030x.040x.015*% - obround with 0.03x0.04 with 0.015 dia hole
+ %ADD10P,.016X6*% - 6 vertex polygon with 0.016 outer dia
+ %ADD15CIRC*5 - refers back to AM CIRC
+ 0123456789
+ */
+
+ //get type of def
+ string defType = strsub( definition, 0, 1 );
+ string defType2 = strsub( definition, 1, 1 );
+ int firstCommaInd = strstr( definition, "," );
+
+ //circle vars
+ string changeWire;
+
+ if( defType == "C" && defType2 == "," ){
+  changeWire = CircleApertureWireWidth( definition );
+  }
+ else if( defType == "R" && defType2 == "," ){
+  changeWire = RectApertureWireWidth( definition );
+  }
+ else if( defType == "O" && defType2 == "," ){
+  changeWire = OBroundApertureWireWidth( definition );
+  }
+ else if( defType == "P" && defType2 == "," ){
+  changeWire = PolygonApertureWireWidth( definition );
+  }
+ else{
+  //dlgMessageBox( defType );
+  changeWire = CircleApertureWireWidth( definition );
+
+  AddException( "Unknown aperture definition '" + definition + "' found while trying to determine wire width. Drawing as circle for non Flash operations.");
+  }
+
+ return changeWire;
+ }
+
+//******************* aperture macro functions *******************//
+
+string CircleMacroWires( string macro, real x, real y ){
+ //%AMCIRCLE*1,1,1.5,0,0*%
+ ///passed in macro=1,1,1.5,0,0
+ //   type = 1
+ //   exposure = 1
+ //   diameter = 1.5
+ //   x = 0
+ //   y = 0
+ string wire;
+
+ string fields[];
+ int numFields = strsplit( fields, macro, ',' );
+ string exposure, diaStr, xStr, yStr;
+ real dia, xPos, yPos;
+
+
+ if( numFields < 5 ){
+  AddException( "Error parsing circle aperture macro. Less than 4 fields found. Aperture not drawn." );
+  }
+ else{
+  exposure = fields[ 1 ];
+  diaStr = fields[ 2 ];
+  xStr = fields[ 3 ];
+  yStr = fields[ 4 ];
+
+  dia = strtod( diaStr );
+  xPos = strtod( xStr );
+  yPos = strtod( yStr );
+
+  wire = "CIRCLE ( " + rtos( x + xPos ) + " " + rtos( y + yPos ) + " ) ( " + rtos( x + xPos + dia/2 ) + " " + rtos( y + yPos ) + " );\n";
+  }
+
+ return wire;
+ }
+
+string VectorLineMacroWires( string macro, real x, real y  ){
+ // type
+ // exposure
+ // width
+ //  xstart
+ //  ystart
+ //  xend
+ //  yend
+ //  rotation around orgin - not center?
+
+ string wire;
+
+ string fields[];
+ int numFields = strsplit( fields, macro, ',' );
+ string exposure, lineWidthStr, xStartStr, yStartStr, xEndStr, yEndStr, rotStr;
+ real xStart, yStart, xEnd, yEnd, rotation;
+
+ if( numFields < 8 ){
+  AddException( "Error parsing circle aperture macro. Less than 4 fields found. Aperture not drawn." );
+  }
+ else{
+  exposure = fields[ 1 ];
+  lineWidthStr = fields[ 2 ];
+  xStartStr = fields[ 3 ];
+  yStartStr = fields[ 4 ];
+  xEndStr = fields[ 5 ];
+  yEndStr = fields[ 6 ];
+  rotStr = fields[ 7 ];
+
+  xStart = strtod( xStartStr );
+  yStart = strtod( yStartStr );
+
+  xEnd = strtod( xEndStr );
+  yEnd = strtod( yEndStr );
+
+  rotation = strtod( rotStr );
+
+
+  //set wire width
+  wire = wire + "CHANGE WIDTH " + lineWidthStr + ";\n";
+
+
+  //calc x/y values based on rotation
+  real rotRadians = rotation / 360 * 2 * PI;
+  real length = sqrt( pow( xEnd - xStart, 2 ) + pow( yEnd - yStart, 2 ) );
+
+  xEnd = cos( rotRadians ) + length + xEnd;
+  yEnd = sin( rotRadians ) + length + yEnd;
+
+  //final wires
+  wire = wire + "WIRE ( " + rtos( xStart + x ) + " " + rtos( yStart + y ) + " ) ( " + rtos( xEnd + x ) + " " + rtos( yEnd + y ) + ");\n";
+
+
+  }  //end if-else
+
+ return wire;
+ }
+
+string CenterLineMacroWires( string macro, real x, real y  ){
+ //  type
+ //  exposure
+ //  width
+ //  height
+ //  x center
+ //  y center
+ //  rotation
+ string wire;
+
+ string fields[];
+ int numFields = strsplit( fields, macro, ',' );
+ string exposure, lineWidthStr, widthStr, heightStr, xCenterStr, yCenterStr, rotStr;
+ real width, height, xCenter, yCenter, rotation;
+
+ if( numFields < 7 ){
+  AddException( "Error parsing center line aperture macro. Less than 7 fields found. Aperture not drawn." );
+  }
+ else{
+  exposure = fields[ 1 ];
+  widthStr = fields[ 2 ];
+  heightStr = fields[ 3 ];
+  xCenterStr = fields[ 4 ];
+  yCenterStr = fields[ 5 ];
+  rotStr = fields[ 6 ];
+
+  width = strtod( widthStr );
+  height = strtod( heightStr );
+
+  xCenter = strtod( xCenterStr );
+  yCenter = strtod( yCenterStr );
+
+  rotation = strtod( rotStr );
+
+
+  //set wire width
+  wire = wire + "CHANGE WIDTH " + heightStr + ";\n";  //consider height as wire width
+
+  //calc start end points to start
+  real xStart, yStart, xEnd, yEnd;
+
+  xStart = xCenter - width/2;
+  yStart = yCenter;
+
+  xEnd = xCenter + width/2;
+  yEnd = yCenter;
+
+  //calc x/y values based on rotation
+  real rotRadians = rotation / 360 * 2 * PI;
+  real length = sqrt( pow( xEnd - xStart, 2 ) + pow( yEnd - yStart, 2 ) );
+
+  xEnd = cos( rotRadians ) + length;
+  yEnd = sin( rotRadians ) + length;
+
+  //final wires
+  wire = wire + "WIRE ( " + rtos( xStart + x ) + " " + rtos( yStart + y ) + " ) ( " + rtos( xEnd + x ) + " " + rtos( yEnd + y ) + ");\n";
+
+  }  //end if-else
+
+
+ return wire;
+ }
+
+string LowerLeftLineMacroWires( string macro, real x, real y  ){
+ //  type
+ //  exposure
+ //  width
+ //  height
+ //  x lower left
+ //  y lower left
+ //  rotation
+ string wire;
+
+ string fields[];
+ int numFields = strsplit( fields, macro, ',' );
+ string exposure, lineWidthStr, widthStr, heightStr, xLowerLeftStr, yLowerLeftStr, rotStr;
+ real width, height, xLowerLeft, yLowerLeft, rotation;
+
+ if( numFields < 7 ){
+  AddException( "Error parsing lower left line aperture macro. Less than 7 fields found. Aperture not drawn." );
+  }
+ else{
+  exposure = fields[ 1 ];
+  widthStr = fields[ 2 ];
+  heightStr = fields[ 3 ];
+  xLowerLeftStr = fields[ 4 ];
+  yLowerLeftStr = fields[ 5 ];
+  rotStr = fields[ 6 ];
+
+  width = strtod( widthStr );
+  height = strtod( heightStr );
+
+  xLowerLeft = strtod( xLowerLeftStr );
+  yLowerLeft = strtod( yLowerLeftStr );
+
+  rotation = strtod( rotStr );
+
+
+  //set wire width
+  wire = wire + "CHANGE WIDTH " + heightStr + ";\n";  //consider height as wire width
+
+  //calc start end points to start
+  real xStart, yStart, xEnd, yEnd;
+
+  xStart = xLowerLeft;
+  yStart = yLowerLeft + height/2;
+
+  xEnd = xLowerLeft + width;
+  yEnd = yLowerLeft + height/2;
+
+  //calc x/y values based on rotation
+  real rotRadians = rotation / 360 * 2 * PI;
+  real length = sqrt( pow( xEnd - xStart, 2 ) + pow( yEnd - yStart, 2 ) );
+
+  xEnd = cos( rotRadians ) + length;
+  yEnd = sin( rotRadians ) + length;
+
+  //final wires
+  wire = wire + "WIRE ( " + rtos( xStart + x ) + " " + rtos( yStart + y ) + " ) ( " + rtos( xEnd + x ) + " " + rtos( yEnd + y ) + ");\n";
+
+  }  //end if-else
+
+
+ return wire;
+ }
+
+string OutlineMacroWires( string macro, real x, real y  ){
+ //  type - 0
+ //  exposure - 1
+ //  num points - 2
+ //  xn, yn points 3, 4, ....
+ // rotation  - last
+
+ string wire;
+
+ string fields[];
+ int numFields = strsplit( fields, macro, ',' );
+
+ //determine number of points
+ int numPoints = strtod( fields[ 2 ] );
+
+ //check to makes sure you got all points
+ if( numFields != ( 4 + ( 2 * numPoints ) + 2 ) ){  //4 points for type, exposure, num points, rotation + ( 2 * num points ) + 2 for start points again
+
+  AddException( "Error parsing outine aperture macro. Incorrect number of fields provided. Aperture not drawn." );
+  }
+ else{
+  //TODO: what should wire width be set to?
+
+  wire = wire + "WIRE ";
+
+  for( int i = 0; i < numPoints; i++ ){
+
+   wire = wire + "( " + fields[ i + 3 ] + " " + fields[ i + 4 ] + " ) ";
+
+   }  //end for
+
+  wire = wire + ";\n";
+
+  }  //end if-else
+
+
+ return wire;
+ }
+
+string PolygonMacroWires( string macro, real x, real y  ){
+ // type - 0
+ // exposure - 1
+ // num verts - 2
+ // x center - 3
+ // y center - 4
+ // dia - 5
+ // rot - 6
+
+ string wire;
+
+ string fields[];
+ int numFields = strsplit( fields, macro, ',' );
+
+ string numVertStr, xCenterStr, yCenterStr, diaStr, rotStr;
+ real numVert, xCenter, yCenter, dia, rot;
+ int wireCount = 0;
+
+ //check to makes sure you got all points
+ if( numFields < 7 ){
+  AddException( "Error parsing polygon aperture macro. Incorrect number of fields provided. " + itos( numFields) + " found, expecting 7. Aperture not drawn." );
+
+  }
+ else{
+
+  numVert = strtod( fields[ 2 ] );
+
+  real degRot = strtod(fields[ 6 ]);
+
+  //build wires for polygon
+  real angleBetweenPoints = ( 2 * PI ) / numVert;
+  real xPt, yPt, prevX, prevY, startX, startY;
+  xCenter = strtod( fields[ 3 ] );
+  yCenter = strtod( fields[ 4 ] );
+  dia = strtod( fields[ 5 ] );
+
+  int inc = 10;
+  real diaIncrement = dia/inc;
+
+
+  //loop thru diameter increments
+  for( int k = 0; k < inc; k++ ){
+
+   //loop thru vertices in polygon
+   for( int i = 0; i <= numVert; i++ ){
+    xPt = cos( i * angleBetweenPoints + ( degRot / 360 * 2*PI ) ) * (dia-k*diaIncrement)/2;
+    yPt = sin( i * angleBetweenPoints + ( degRot / 360 * 2*PI ) ) * (dia-k*diaIncrement)/2;
+
+    //set line width - first line set 0.0, other lines set to width of increment
+    if( k == 0 ){
+     //wire +=  "SET WIDTH 0.0;\n ";
+     }
+    else if( k >= 1 ){
+     wire +=  "SET WIDTH " + rtos( diaIncrement/2 ) + ";\n ";
+
+     //generate wire commands. for first point save start values
+     if( i == 0 ){
+      //first point.
+      startX = xPt + x + xCenter;
+      startY = yPt + y + yCenter;
+
+      }
+     else if( i == numVert ){
+      //for final line connect back to start
+      wire += "WIRE 'S$" + itos( SignalCount ) + "' ( " + rtos( prevX ) + " " + rtos( prevY ) + " ) ( " + rtos( startX ) + " " + rtos( startY ) + ");\n";
+
+      SignalCount++;
+      }
+     else{
+      //draw outlines
+      wire += "WIRE 'S$" + itos( SignalCount ) + "' ( " + rtos( prevX ) + " " + rtos( prevY ) + " ) ( " + rtos( xPt + x + xCenter ) + " " + rtos( yPt + y + yCenter ) + ");\n";
+
+      SignalCount++;
+      }  //end if-else on i
+     }  // end if-else on k
+
+    prevX = xPt + x + xCenter;
+    prevY = yPt + y + yCenter;
+
+    } //end for i
+   }  //end for k
+
+  }  //end if-else
+
+
+ return wire;
+ }
+
+
+
+string PolygonMacroWires_polygon( string macro, real x, real y  ){
+ // type - 0
+ // exposure - 1
+ // num verts - 2
+ // x center - 3
+ // y center - 4
+ // dia - 5
+ // rot - 6
+
+ string wire;
+
+ string fields[];
+ int numFields = strsplit( fields, macro, ',' );
+
+ string numVertStr, xCenterStr, yCenterStr, diaStr, rotStr;
+ real numVert, xCenter, yCenter, dia, rot;
+
+ //check to makes sure you got all points
+ if( numFields < 7 ){
+  AddException( "Error parsing polygon aperture macro. Incorrect number of fields provided. " + itos( numFields) + " found, expecting 7. Aperture not drawn." );
+
+  }
+ else{
+
+  numVert = strtod( fields[ 2 ] );
+
+  real degRot = strtod(fields[ 6 ]);
+
+  //build wires for polygon
+  real angleBetweenPoints = ( 2 * PI ) / numVert;
+  real xPt, yPt, prevX, prevY;
+  xCenter = strtod( fields[ 3 ] );
+  yCenter = strtod( fields[ 4 ] );
+  dia = strtod( fields[ 5 ] );
+
+  real diaIncrement = dia/10;
+
+
+  wire +=  "SET WIDTH 0.0;\n ";
+
+
+  for( int k = 0; k < 10; k++ ){
+
+   wire +=  "POLYGON ";
+
+   //build points for polygone
+   for( int i = 0; i <= numVert; i++ ){
+    xPt = cos( i * angleBetweenPoints + ( degRot / 360 * 2*PI ) ) * (dia-k*diaIncrement)/2;
+    yPt = sin( i * angleBetweenPoints + ( degRot / 360 * 2*PI ) ) * (dia-k*diaIncrement)/2;
+
+    wire += " ( " + rtos( xPt + x + xCenter ) + " " + rtos( yPt + y + yCenter ) + " )";
+
+    } //end for
+
+   wire += ";\n";
+   }  //end k
+
+  }  //end if-else
+
+
+ return wire;
+ }
+
+
+string PolygonMacroWires_polygon_outline( string macro, real x, real y  ){
+ // type - 0
+ // exposure - 1
+ // num verts - 2
+ // x center - 3
+ // y center - 4
+ // dia - 5
+ // rot - 6
+
+ string wire;
+
+ string fields[];
+ int numFields = strsplit( fields, macro, ',' );
+
+ string numVertStr, xCenterStr, yCenterStr, diaStr, rotStr;
+ real numVert, xCenter, yCenter, dia, rot;
+
+ //check to makes sure you got all points
+ if( numFields < 7 ){
+  AddException( "Error parsing polygon aperture macro. Incorrect number of fields provided. " + itos( numFields) + " found, expecting 7. Aperture not drawn." );
+
+  }
+ else{
+
+  numVert = strtod( fields[ 2 ] );
+
+  real degRot = strtod(fields[ 6 ]);
+
+  //build wires for polygon
+  real angleBetweenPoints = ( 2 * PI ) / numVert;
+  real xPt, yPt, prevX, prevY;
+  xCenter = strtod( fields[ 3 ] );
+  yCenter = strtod( fields[ 4 ] );
+  dia = strtod( fields[ 5 ] );
+
+  //wire += "SET POLYGON_RATSNEST ON;\n";
+
+  wire +=  "POLYGON ";
+
+  for( int i = 0; i <= numVert; i++ ){
+   xPt = cos( i * angleBetweenPoints + ( degRot / 360 * 2*PI ) ) * dia/2;
+   yPt = sin( i * angleBetweenPoints + ( degRot / 360 * 2*PI ) ) * dia/2;
+
+   wire += " ( " + rtos( xPt + x + xCenter ) + " " + rtos( yPt + y + yCenter ) + " )";
+
+   } //end for
+
+  wire += ";\n";
+
+  }  //end if-else
+
+
+ return wire;
+ }
+
+string MoireMacroWires( string macro, real x, real y  ){
+ //  type - 0
+ //  x center - 1
+ //  y center - 2
+ //  outer dia - 3
+ //  ring thickness - 4
+ //  ring gap - 5
+ //  max num rings - 6
+ //  cross hair thickness - 7
+ //  cross hair length - 8
+ //  angle - 9
+
+ string wire;
+
+ string fields[];
+ int numFields = strsplit( fields, macro, ',' );
+
+ int numRings;
+ real xCenter, yCenter, dia, ringThickness, ringGap, crossHairThickness, crossHairLength, angle;
+
+ if( numFields < 10 ){
+  AddException( "Error parsing moire aperture macro. Incorrect number of fields provided. Aperture not drawn." );
+  }
+ else{
+  //get values
+  xCenter = strtod( fields[ 1 ] );
+  yCenter = strtod( fields[ 2 ] );
+
+  dia = strtod( fields[ 3 ] ); //used for circles
+  ringThickness = strtod( fields[ 4 ] );
+  ringGap = strtod( fields[ 5 ] );
+
+  numRings = strtol( fields[ 6 ] );
+
+  crossHairThickness = strtod( fields[ 7 ] );
+  crossHairLength = strtod( fields[ 8 ] );
+
+  angle = strtod( fields[ 9 ] );
+
+  angle = angle / 360 * 2 * PI;  //convert to radians
+
+  //draw cirlces
+  wire = wire + "SET WIDTH " + rtos( ringThickness ) + ";\n";
+
+  for( int i = 0; i < numRings; i++ ){
+
+   wire = wire + "CIRCLE ( " + rtos( x + xCenter ) + " " + rtos( y + yCenter ) + " ) ( " + rtos( x + xCenter + dia/2 ) + " " + rtos( y + yCenter ) + " );\n";
+
+   dia = dia - ( i * ( 2 * ( ringThickness + ringGap ) ) );
+   }  //end for
+
+
+  //draw cross hairs
+  wire = wire + "SET WIDTH " + rtos( crossHairThickness ) + ";\n";
+  real xIncrement, yIncrement;
+
+  xIncrement = cos( angle ) * crossHairLength/2;
+  yIncrement = sin( angle ) * crossHairLength/2;
+
+  //hor cross
+  wire = wire + "WIRE ( " + rtos( -1.0 * xIncrement + x ) + " " + rtos( yIncrement - y ) + " ) ( " + rtos( xIncrement + x ) + " " +  rtos( yIncrement + y ) + " );\n";
+
+  //vert cross
+  wire = wire + "WIRE ( " + rtos( yIncrement + x ) + " " + rtos( -1.0 * xIncrement + y ) + " ) ( " + rtos( x - yIncrement ) + " " +  rtos( xIncrement + y ) + " );\n";
+
+  }  //end if/else
+
+ return wire;
+ }
+
+string ThermalMacroWires( string macro, real x, real y  ){
+ // type = 0
+ // x center = 1
+ // y center = 2
+ // outer dia = 3
+ // inner dia = 4
+ // gap thickness = 5
+ // angle = 6
+
+ string wire;
+
+ string fields[];
+ int numFields = strsplit( fields, macro, ',' );
+
+ real xCenter, yCenter, outerDia, innerDia;
+
+ if( numFields < 7 ){
+  AddException( "Error parsing thermal aperture macro. Incorrect number of fields provided. Aperture not drawn." );
+
+  }
+ else{
+  AddException( "Thermal aperture macro found. Gaps not draw for thermal." );
+
+  xCenter = strtod( fields[ 1 ] );
+  yCenter = strtod( fields[ 2 ] );
+  outerDia = strtod( fields[ 3 ] );
+  innerDia = strtod( fields[ 4 ] );
+
+  wire = wire + "SET WIDTH " + rtos( outerDia/2 - innerDia/2 ) + ";\n";
+
+  wire = wire + "CIRCLE ( " + rtos( x + xCenter ) + " " + rtos( y + yCenter )+ " ) ( " + rtos( x + xCenter + outerDia/2 ) + " " +rtos( y + yCenter ) + " );\n";
+
+  }  //end if-else
+
+
+ return wire;
+ }
+
+string GetApertureMacroWires( string aperture, real x, real y, string apertureDef ){
+
+ //http://www.artwork.com/gerber/274x/rs274x.htm
+
+ //%AMOC8*5,1,8,0,0,1.08239X$1,22.5*
+
+ //get aperture macro from lookup
+ string macro = lookup( ApertureMacros, aperture, "macro" );
+
+ //make sure a value was found.
+ if( macro == "" ){
+  AddException( "Problem getting macro definition for aperture id '" + aperture + "'." );
+  return "";
+  }
+
+ //handle complex macros
+ string macros[];
+ int numMacros = strsplit( macros, macro, '*' );
+
+ string allMacroWires, macroWires;
+
+ //loop thru macro fields
+ for( int i = 0; i < numMacros; i++ ){
+
+  macro = macros[ i ];
+
+  //check if macro includes $ which means it has parameters that need to be handled
+  if( strstr( macro, "$" ) >= 0 ){
+
+   //AddException( "Macro includes complex parameters that cannot be rendered. Skipping macro '" + macro + "'." );
+
+   //dlgMessageBox( "Found Param:" + macro + ", " + apertureDef );
+
+   //parse out values from definition. ex OC8,0.1900 --> OC8 & 0.1900.
+   string params[];
+   int numParams = strsplit( params, apertureDef, ',' );
+
+   //split macro and find $$ places. ex 5,1,8,0,0,1.08239X$1,22.5* --> split and then find ones with $ in them
+   string macroFields[];
+   int numMacroFields = strsplit( macroFields, macro, ',' );
+
+   int paramCounter = 1;  //start at 1 since the first value of param is the macro def
+   real param;  //actual real value of param
+
+   //loop thru fields and check if params and then do replace
+   for( int k = 0; k < numMacroFields; k++ ){
+
+    if( strstr( macroFields[k], "$" ) >= 0 ){
+     //local fields for spliting of macro individual fields
+     string fs[];
+     int numF = 0;
+
+     //found param. get value from definition
+     param = strtod( params[ paramCounter ] );
+
+     //split by X values. assume first value is the multiplier and second is the parama we parsed from def
+     numF = strsplit( fs, macroFields[k], 'X' );
+
+     macroFields[k] = rtos( strtod( fs[0] ) * param );
+
+     paramCounter++;
+     }
+
+    }  //end for k
+
+
+   //merge macrofields back to string for usage below
+   macro = strjoin( macroFields, ',' );
+
+   //dlgMessageBox( macro );
+   }  //end if
+
+
+  //get type of macro
+  //int firstAsteriskInd = strstr( macro, "*" );
+  int firstCommaInd = strstr( macro, "," );
+  string macType = strsub( macro, 0, firstCommaInd );
+
+  macroWires = "";
+
+  if( macType == "0"  ){
+   //comment. do nothing
+   }
+  else if( macType == "1"  ){
+   //circle
+   macroWires = CircleMacroWires( macro, x, y );
+   }
+  else if( macType == "2" || macType == "20" ){
+   //vector line
+   macroWires = VectorLineMacroWires( macro, x, y );
+   }
+  else if( macType == "21" ){
+   //center line
+   macroWires = CenterLineMacroWires( macro, x, y );
+   }
+  else if( macType == "22" ){
+   //lower left line
+   macroWires = LowerLeftLineMacroWires( macro, x, y );
+   }
+  else if( macType == "4" ){
+   //outline
+   macroWires = OutlineMacroWires( macro, x, y );
+   }
+  else if( macType == "5" ){
+   //polygon
+   macroWires = PolygonMacroWires( macro, x, y );
+   }
+  else if( macType == "6" ){
+   //moire
+   macroWires = MoireMacroWires( macro, x, y );
+   }
+  else if( macType == "7" ){
+   //thermal
+   macroWires = ThermalMacroWires( macro, x, y );
+   }
+  else{
+   //unknown - too complex
+   AddException( "Unknown aperture macro '" + macro + "' for aperture id '" + aperture + "'. Macro type='" + macType + "'" );
+   }  //end if-else for macType
+
+  //add
+  allMacroWires = allMacroWires + macroWires;
+
+
+  }  //end for loop
+
+ //dlgMessageBox( macro + ":" + macroWires );
+
+ return macroWires;
+ }
+
+
+
+//******************* aperture def wires functions *******************//
+string CircleApertureWires( string definition, real x, real y ){
+ //C,<diameter>[X<hole>]
+ //if <hole> then hole in center, otherwise solid
+ string wires;
+
+ int commaInd = strstr( definition, "," );
+ int xInd = strstr( definition, "X" );
+ string diaStr, holeDiaStr;  // = strsub( definition, commaInd+1, strlen())
+ real dia, holeDia;
+
+ if( xInd >= 0 ){
+  //hole found
+
+  diaStr = strsub( definition, commaInd+1, strlen( definition ) - commaInd - xInd );
+
+  holeDiaStr = strsub( definition, xInd+1 );
+
+  dia = strtod( diaStr );
+  holeDia = strtod( holeDiaStr );
+
+  //real width = dia/2 - holeDia/2;
+
+  //set width to diff in diameters
+  wires = "CHANGE WIDTH " + rtos(dia/2 - holeDia/2) + ";\n";
+
+  wires = wires + "CIRCLE (" + rtos( x ) + " " + rtos( y ) + ") ( " + rtos( x + dia/2 ) + " " + rtos( y ) + ");\n";
+
+  }
+ else{
+  //no whole. solid
+  wires = "CHANGE WIDTH 0;\n";
+
+  diaStr = strsub( definition, commaInd+1, strlen( definition ) - commaInd );
+
+  dia = strtod( diaStr );
+
+  wires = wires + "CIRCLE (" + rtos( x ) + " " + rtos( y ) + ") ( " + rtos( x + dia/2 ) + " " + rtos( y ) + ");\n";
+
+  }
+
+ //eagle command
+ //CIRCL (xcenter, ycenter) (xradius, ycenter)
+
+ return wires;
+ }
+
+string RectApertureWires( string definition, real x, real y ){
+ //R,<width>X<height>[X<hole>]
+ string wires;
+ string origDef = definition;
+
+ //get comma position
+ int commaInd = strstr( definition, "," );
+
+ //trim after comma
+ definition = strsub( definition, commaInd+1, strlen( definition ) - commaInd );
+
+ //split by X
+ string fields[];
+ int numFields = strsplit( fields, definition, 'X' );
+
+ string widthStr, heightStr, holeStr;
+ real width, height, holeDia;
+
+ //eagle rectangle command
+ //RECT (Xupperleft Yupperleft) (Xlowerright Ylowerright)
+
+ if( numFields == 2 ){
+  //width and height only
+  width = strtod( fields[ 0 ] );
+  height = strtod( fields[ 1 ] );
+
+  //dlgMessageBox( rtos( width ) );
+  //dlgMessageBox( rtos( height ) );
+
+  //assume rect is in middle of rect
+  wires = "RECT ( " + rtos( x - width/2 ) + " " + rtos( y + height/2 ) + " ) ( " + rtos( x + width/2 ) + " " + rtos( y - height/2 ) + " );\n";
+
+  }
+ else if( numFields == 3 ){
+  //width and height only
+  width = strtod( fields[ 0 ] );
+  height = strtod( fields[ 1 ] );
+
+  AddException( "Circle in rectangle aperture ignored" );
+
+  wires = "RECT ( " + rtos( x - width/2 ) + " " + rtos( y + height/2 ) + " ) ( " + rtos( x + width/2 ) + " " + rtos( y - height/2 ) + " );\n";
+  }
+ else{
+  AddException( "Something went wrong in processing aperture definition='" + origDef + "'" );
+
+  }  //end if-else
+
+ return wires;
+ }
+
+string OBroundApertureWires( string definition, real x, real y ){
+  //treat obround as rectangle an log exception
+  AddException( "Obround aperture definition being treated as rectangle." );
+
+
+  string wires;
+  string origDef = definition;
+
+  //get comma position
+  int commaInd = strstr( definition, "," );
+
+  //trim after comma
+  definition = strsub( definition, commaInd+1, strlen( definition ) - commaInd );
+
+  //split by X
+  string fields[];
+  int numFields = strsplit( fields, definition, 'X' );
+
+  string widthStr, heightStr, holeStr;
+  real width, height, holeDia;
+
+  //eagle rectangle command
+  //RECT (Xupperleft Yupperleft) (Xlowerright Ylowerright)
+
+  if( numFields == 2 ){
+   //width and height only
+   width = strtod( fields[ 0 ] );
+   height = strtod( fields[ 1 ] );
+
+   //dlgMessageBox( rtos( width ) );
+   //dlgMessageBox( rtos( height ) );
+
+   //assume rect is in middle of rect
+   wires = "RECT ( " + rtos( x - width/2 ) + " " + rtos( y + height/2 ) + " ) ( " + rtos( x + width/2 ) + " " + rtos( y - height/2 ) + " );\n";
+
+   }
+  else if( numFields == 3 ){
+   //width and height only
+   width = strtod( fields[ 0 ] );
+   height = strtod( fields[ 1 ] );
+
+   AddException( "Circle in obround aperture ignored" );
+
+   wires = "RECT ( " + rtos( x - width/2 ) + " " + rtos( y + height/2 ) + " ) ( " + rtos( x + width/2 ) + " " + rtos( y - height/2 ) + " );\n";
+   }
+  else{
+   AddException( "Something went wrong in processing aperture definition='" + origDef + "'" );
+
+   }  //end if-else
+
+  return wires;
+ }
+
+string PolygonApertureWires( string definition, real x, real y ){
+ //P,<Outer diameter>X<Number of vertices>[X<Degrees of rotation>[X<Hole>]]
+ //num vertices = 3 to 12
+ string wires;
+
+ string origDef = definition;
+
+ //get comma position
+ int commaInd = strstr( definition, "," );
+
+ //trim after comma
+ definition = strsub( definition, commaInd+1, strlen( definition ) - commaInd );
+
+ //split by X
+ string fields[];
+ int numFields = strsplit( fields, definition, 'X' );
+
+ string outerDiaStr, numVertStr, degRotStr, holeDiaStr;
+ real outerDia, numVert, degRot, holeDia;
+
+ //get required values
+ outerDia = strtod( fields[ 0 ] );
+ numVert = strtod( fields[ 1 ] );
+
+ if( numFields == 4 ){
+  //rotation and hole - if hole then rotation must be set also
+  degRot = strtod( fields[ 2 ] );
+  holeDia = strtod( fields[ 3 ] );
+
+  AddException( "Circle in polygone aperture ignored" );
+  }
+ else if( numFields = 3 ){
+  //rotation only
+  degRot = strtod( fields[ 2 ] );
+
+  //AddException( "Circle in obround aperture ignored" );
+
+  }
+ else if( numFields = 2 ){
+  //no rotation or hole
+  degRot = 0.0;
+  }
+ else{
+  AddException( "Something went wrong in processing aperture definition='" + origDef + "'" );
+
+  }
+
+ //build wires for polygon
+ real angleBetweenPoints = ( 2 * PI ) / numVert;
+ real xPt, yPt, prevX, prevY;
+
+ wires = wires + "POLYGON ";
+
+ for( int i = 0; i <= numVert; i++ ){
+  xPt = cos( i * angleBetweenPoints + ( degRot / 360 * 2*PI ) ) * outerDia/2;
+  yPt = sin( i * angleBetweenPoints + ( degRot / 360 * 2*PI ) ) * outerDia/2;
+
+  wires = wires + " ( " + rtos( xPt + x ) + " " + rtos( yPt + y ) + " )";
+
+  } //end for
+
+ wires = wires + ";\n";
+
+ return wires;
+ }
+
+
+string GetApertureDefWires( string aperture, real x, real y ){
+
+ string wires;
+
+ //get aperture def from lookup
+ string definition = lookup( ApertureDefs, aperture, "definition" );
+
+ //check if definition found
+ if( definition == "" ){
+
+  AddException( "Unknown aperture flash '" + aperture + "' called. Unable to map to aperture in file." );
+
+  }
+ else{
+
+  /*
+  %ADD10C,.025*% - Circle, 0.025 diameter
+  %ADD10R,.050x.050x.027*% - Rectangle, 0.05x0.05 sides with 0.027 round hole
+  %ADD10O,.030x.040x.015*% - obround with 0.03x0.04 with 0.015 dia hole
+  %ADD10P,.016X6*% - 6 vertex polygon with 0.016 outer dia
+  %ADD15CIRC*5 - refers back to AM CIRC
+  0123456789
+  */
+
+  //get type of def
+  string defType = strsub( definition, 0, 1 );  //get first char
+  string defType2 = strsub( definition, 1, 1 );  //get second char for comma check
+  int firstCommaInd = strstr( definition, "," );
+
+  //circle vars
+  //string wires;
+
+  //make sure first char is expected and second is comma. if second not comma then probably macro
+  if( defType == "C" && defType2 == "," ){
+   wires = CircleApertureWires( definition, x, y );
+   }
+  else if( defType == "R" && defType2 == "," ){
+   wires = RectApertureWires( definition, x, y );
+   }
+  else if( defType == "O" && defType2 == "," ){
+   wires = OBroundApertureWires( definition, x, y );
+   }
+  else if( defType == "P" && defType2 == "," ){
+   wires = PolygonApertureWires( definition, x, y );
+   }
+  else{
+   //if not one of standard definitions then check in macros
+
+   //get just first part of definition as there can be variables included after id
+   int commaInd = strchr( definition, ',' );
+
+   //assign defintion to aperturedef so we can parse out params later
+   string apertureDef = definition;
+
+   if( commaInd >= 0 ){
+    definition = strsub( definition, 0, commaInd );
+    }
+
+   string macro = lookup( ApertureMacros, definition, "macro" );
+
+   //check if matching macro found
+   if( macro == "" ){
+    AddException( "Unknown aperture flash '" + definition + "' called. Unable to map to aperture in file." );
+    }
+   else{
+    wires = GetApertureMacroWires( definition, x, y, apertureDef );
+    }  //end if-else
+   }  //end if-else
+  }  //end if-else
+
+ return wires;
+ }
+
+
+
+
+
+//******************* parsers for command/functions *******************//
+void ParseUnits( string line ){
+ //%MOMM*%
+ //012345
+
+ if( strsub( line, 3, 1 ) == "M" ){
+  AddLogMessage( "ParseUnits():Found MM units" );
+
+  Units = MM;
+
+  //UnitsString = "MM";
+  }
+ else if( strsub( line, 3, 1 ) == "I" ){
+  AddLogMessage( "ParseUnits():Found inches units" );
+
+  Units = INCH;
+
+  //UnitsString = "INCH";
+  }
+ else{
+  AddLogMessage( "ParseUnits():Error:Didnt find expect units" );
+
+  }  //end if-else
+
+ }
+
+
+void ParseFormatSpec( string line ){
+ //%FSLAX25Y25*%
+ //01234567890
+ /*
+ %FS
+ L|T - zero ommision
+ A|I - coordinate values
+ X<format>Y<format>
+ */
+
+ CoordFormat = line;
+
+ //get zero ommission
+ if( strsub( line, 3, 1 ) == "L" ){
+  AddLogMessage( "ParseFormatSpec():Found Leading Zeros" );
+
+  ZeroOmmission = zeroOmmLeading;
+  }
+ else if( strsub( line, 3, 1 ) == "T" ){
+  AddLogMessage( "Found Trailing Zeros" );
+
+  ZeroOmmission = zeroOmmTrailing;
+  }
+ else{
+  AddLogMessage( "ParseFormatSpec():Error: Unknown zeros" );
+  }  //end if-else
+
+ //get coordinate values
+ if( strsub( line, 4, 1 ) == "A" ){
+  AddLogMessage( "ParseFormatSpec():Found Absolute notation" );
+
+  ValueNotation = absNotation;
+  }
+ else if( strsub( line, 4, 1 ) == "I" ){
+  AddLogMessage( "ParseFormatSpec():Found Incremental notation" );
+
+  ValueNotation = incNotation;
+  }
+ else{
+  AddLogMessage( "ParseFormatSpec():Error:Unknown notation" );
+  }  //end if-else
+
+
+ //parse x/y precision values
+ //%FSLAX25Y25*%
+ //01234567890
+ XIntegerSize = strtol( strsub( line, 6, 1) );
+ XDecimalSize = strtol( strsub( line, 7, 1) );
+
+ YIntegerSize = strtol( strsub( line, 9, 1) );
+ YDecimalSize = strtol( strsub( line, 10, 1) );
+
+
+ }  //end parse format spec
+
+
+void ParseAttribute( string line ){
+ //%TF.Part,Other*%
+
+ Attributes[ AttributeCounter ] = line;
+
+ AttributeCounter++;
+
+ }
+
+void ParsePolarity( string line ){
+ //%LPD*%
+
+ }
+
+
+void ParseComment( string line ){
+ //G04 Start image generation
+
+ Comments[ CommentCounter ] = line;
+
+ CommentCounter++;
+
+ }
+
+void ParseApertureDef( string line ){
+ //%ADD10C,0.010*%
+ //0123456789012345
+
+ //%ADD010C,0.005*%
+ //0123456789012345
+
+ //get aperture id - D10
+ string id = strsub( line, 3, 3 );
+
+ //dlgMessageBox( id );
+
+ //check if first char is 0
+ string zeroCheck = strsub( id, 1, 1);
+
+ //dlgMessageBox( zeroCheck );
+
+ //get aperture definition - C,0.010
+  string appDef = strsub( line, 6, strlen( line ) - 6 - 2 );
+
+  //check to make sure aperture number is not padded with zero
+ if( zeroCheck == "0" ){
+  string idOld = id;
+  id = "D" + strsub( line, 5, 2 );
+  appDef = strsub( line, 7, strlen( line ) - 7 - 2 );
+
+  //dlgMessageBox( line+ ":" + idOld + ":"+ id + "=" + appDef );
+ }
+
+ string appIdDef = id + "\t" + appDef;   //AD11 C,0.010
+
+ //put aperture in lookup array
+ ApertureDefs[ ApDefCounter ] = appIdDef;
+
+ ApDefCounter++;
+ }
+
+void ParseApertureMacro( string line ){
+ //%AMTHERMAL80*
+ //01234567890
+
+ //get end of macro id by looking for *
+ int asterikInd = strstr( line, "*" );
+
+ //get id
+ string id = strsub( line, 3, (asterikInd - 3) );
+
+ //get macro
+ string appMac = strsub( line, asterikInd+1, strlen( line ) - asterikInd - 3 );
+
+ string appIdMac = id + "\t" + appMac;  //THERMAL80 ....
+
+ ApertureMacros[ ApMacCounter ] = appIdMac;
+
+ ApMacCounter++;
+ }
+
+real ParseOpCodePosition( string position, int intPrecision, int decPrecision ){
+ //check if negative sign
+ int negativeInd = strstr( position, "-" );
+ int negativeFound = false;
+
+
+ if( negativeInd >= 0 ){
+  negativeFound = true;
+
+  //dlgMessageBox( position );
+
+  //if found then remove for now
+  position = RemoveNegatives( position );
+
+  //dlgMessageBox( position );
+  }
+
+
+ //determine zero pad count
+ int zeroPadCount = (intPrecision+decPrecision) - strlen( position );
+
+ if( zeroPadCount <= 0 ){
+  //no padding needed
+  }
+ else{
+  //pad value
+  for( int i = 0; i < zeroPadCount; i++ ){
+   if( ZeroOmmission == zeroOmmTrailing ){
+    //pad trailing
+    position = position + "0";
+    }
+   else{
+    //pad leading
+    position = "0" + position;
+    }  //end if-else
+   }  //end for
+
+  }  //end if-else
+
+ //extract integer and decimal parts of string
+ string intPart = strsub( position, 0, intPrecision );
+ string decPart = strsub( position, intPrecision );
+ string value = intPart + "." + decPart;
+
+ //add in negative if found
+ if( negativeFound ){
+  value = "-" + value;
+  }
+
+ AddLogMessage( "ParseOpCodePosition():" + value + ":" + position );
+
+
+ return strtod( value );
+ }
+
+void ParseOperationCode( string line ){
+
+ //local vars
+ real realX = 0.0, realY = 0.0, realI = 0.0, realJ = 0.0;
+
+ string posStr, opDCode;
+
+ //check if starts with G code
+ if( strxstr( line, "^G.*" ) >= 0 ){
+  AddLogMessage( "ParseOperationCode():Found G code:" + line );
+  }
+
+ //get X position
+ int xInd = strstr( line, "X" );
+
+ //get Y position
+ int yInd = strstr( line, "Y" );
+
+ //get I position
+ int iInd = strstr( line, "I" );
+
+ //get J position
+ int jInd = strstr( line, "J" );
+
+ int dInd = strstr( line, "D" );
+
+ if( dInd == -1 ){
+  dInd = strlen( line )-1;
+ }
+
+
+ //if x value present then get position string
+ if( xInd >= 0 ){
+  //x is present
+  if( yInd >= 0 ){
+   posStr = strsub( line, xInd+1, yInd - xInd - 1);
+   }
+  else if( iInd >= 0 ){
+   posStr = strsub( line, xInd+1, iInd - xInd - 1 );
+   }
+  else if( jInd >= 0 ){
+   posStr = strsub( line, xInd+1, jInd - xInd - 1 );
+   }
+  else{
+   posStr = strsub( line, xInd+1, dInd - xInd - 1 );
+
+
+   }  //end if-else
+
+  //convert x pos string to real
+  realX = ParseOpCodePosition( posStr, XIntegerSize, XDecimalSize );
+
+  CurrentX = realX;
+  }  //end if x
+
+ if( yInd >= 0 ){
+  if( iInd >= 0 ){
+   posStr = strsub( line, yInd+1, iInd - yInd - 1 );
+   }
+  else if( jInd >= 0 ){
+   posStr = strsub( line, yInd+1, jInd - yInd - 1 );
+   }
+  else{
+   posStr = strsub( line, yInd+1, dInd - yInd - 1 );
+   }  //end if-else
+
+  //convert x pos string to real
+  realY = ParseOpCodePosition( posStr, YIntegerSize, YDecimalSize );
+
+  CurrentY = realY;
+  }  //end if y
+
+ if( iInd >= 0 ){
+  if( jInd >= 0 ){
+   posStr = strsub( line, iInd+1, jInd - iInd - 1 );
+   }
+  else{
+   posStr = strsub( line, iInd+1, dInd - iInd - 1 );
+   }  //end if-else
+
+  //convert x pos string to real
+  realI = ParseOpCodePosition( posStr, XIntegerSize, XDecimalSize );
+
+  CurrentI = realI;
+  }  //end if i
+
+ if( jInd >= 0 ){
+
+  posStr = strsub( line, jInd+1, dInd - jInd - 1 );
+
+  //convert x pos string to real
+  realJ = ParseOpCodePosition( posStr, YIntegerSize, YDecimalSize );
+
+  CurrentJ = realJ;
+  }  //end if i
+
+ //get Op code
+ //make sure D found
+ if( strstr( line, "D" ) == -1 ){
+  //if D not found the assume D01
+  opDCode = "D01";
+   }
+ else{
+  opDCode = strsub( line, dInd, 3 );
+
+   }
+
+
+ //add to array
+ OpCodes[ OpCodeCounter ] = CurrentAperture + "\t" + rtos(CurrentX) + "\t" + rtos( CurrentY ) + "\t" + rtos( CurrentI ) + "\t" + rtos( CurrentJ ) + "\t" + opDCode;
+
+ AddLogMessage( "ParseOperationCode():" + OpCodes[ OpCodeCounter ] + ":" + line );
+
+ OpCodeCounter++;
+ }
+
+void SetAperture( string line ){
+
+ CurrentAperture = strsub( line, 0, 3 );
+
+ AddLogMessage( "SetAperture():" + CurrentAperture + ":" + line );
+ }
+
+
+//******************* main state machine  *******************//
+string ParseLine( string line ){
+ /**
+ Operation codes
+  D01-Line to Point, D02-Move To, D03-Create Flash - Ex X100Y100D01*
+  Dnn - Set current Apeture
+ Graphic state - Page 43
+  FS-Coord format - Ex. %FSLAX25Y25*%
+  MO-Unit - Ex. %MOMM*% = Set units to MM
+  G70/G71 Inches vs. Millimeters - old
+  AD-Apeture - Ex. %ADD10C,0.010*% = Define new Apeture D10
+  AM-Apeture Macro - Ex. %AMTHERMAL80*
+  G74/G75-Quadrant
+  G01/G02/G03-Interpolation
+  G36/G37 - Area fille
+  G54 - tells plotter to turn to new aperture
+  SR-Step & Repeat - Ex. %SRX1Y1I0J0*%  = Sets step and repeat to 1 for both x and y
+  LP-Level polarity - Ex. %LPD*% = Dark
+ Attributes
+  TF -    %TF.FileFunction,Soldermask,Top*
+ Comment
+  G04
+ End of file
+  M02*
+ **/
+
+ string type;
+
+ //******** cleanup/hacks for some gerber command codes that cause issues *******//
+
+ //remove G54 - turn to new aperture. no longer used/needed
+ if( strxstr( line, ".*G54.*" ) >= 0 ){
+  //line = RemoveG54( line );
+  line = ReplaceString( line, "G54", "" );
+  }
+
+ //********  main state maching to parse individual lines *******//
+ if( strxstr( line, "^G04.*") >= 0 ){
+  type = "Comment";
+
+  ParseComment( line );
+  }
+ else if( strxstr( line, "^%FS.*") >= 0 ){
+  type = "FormatSpecification";
+
+  ParseFormatSpec( line );
+  }
+ else if( strxstr( line, "^%AD.*") >= 0 ){
+  type = "ApertureDefinition";
+
+  ParseApertureDef( line );
+  }
+ else if( strxstr( line, ".*D01.*" ) >= 0 ){
+  type = "InterpolationOperation";
+
+  ParseOperationCode( line );
+  }
+ else if( strxstr( line, ".*D02.*") >= 0 ){
+  type = "MoveOperation";
+
+  ParseOperationCode( line );
+  }
+ else if( strxstr( line, ".*D03.*") >= 0 ){
+  type = "FlashOperation";
+
+  ParseOperationCode( line );
+  }
+ else if( strxstr( line, "M02") >= 0 ){
+  type = "EndOfFile";
+
+  }
+ /*else if( strxstr( line, "^%MO") >= 0 ){
+  type = "UnitSpecification";
+
+  ParseUnits( line );
+  }*/
+
+ else if( strxstr( line, "^%AM.*") >= 0 ){
+  type = "ApertureMacro";
+
+  ParseApertureMacro( line );
+  }
+ else if( strxstr( line, "^%TF.*") >= 0 ){
+  type = "Attribute";
+
+  ParseAttribute( line );
+  }
+ else if( strxstr( line, "G74") >= 0 ){
+  type = "SingleQuadrant";
+
+  //ParseApertureMacro( line );
+  }
+ else if( strxstr( line, "G75") >= 0 ){
+  type = "MultiQuadrant";
+
+  //ParseAttribute( line );
+  }
+ else if( strxstr( line, "G36") >= 0 || strxstr( line, "G37") >= 0  ){
+  type = "AreaFill";
+
+  //set fill for exception
+  HasFillCommand = true;
+
+  }
+ else if( strxstr( line, "^%LP.*") >= 0 ){
+  type = "Polarity";
+
+  ParsePolarity( line );
+  }
+ else if( strxstr( line, "D[1-9]{1}[0-9]") >= 0 ){
+  type = "SelectAperture";
+
+  SetAperture( line );
+  }
+ else if( strxstr( line, "^%TF.*") >= 0 ){
+  type = "Attribute";
+
+  }
+ else if( strxstr( line, "X") >= 0 || strxstr( line, "Y") >= 0 ){
+  type = "OperationWithoutOpCode";
+
+  ParseOperationCode( line );
+
+  }
+ else{
+  type = "Other";
+  }  //end if-else
+
+ AddLogMessage( "ParseLine():" + type + ":" + line );
+
+ return type;
+
+ }  //end getlinetype
+
+
+//******************* UI buttons actions *******************//
+
+void ImportGerberFile( string filePath, string layerRow, int doImport ){
+
+ DoImport = doImport;
+
+ //parse out layer number
+ string layerFields[];
+ int layerCount = strsplit( layerFields, layerRow, '-' );  //get layer text from array id.
+ string layerId = layerFields[ 0 ];  //get layer number
+
+ //string commands = "GRID " + UnitsString[ Units ] + ";\nLAYER " + layerId + ";\nSET WIRE_BEND 2;\n";
+
+ WriteCommands( "GRID " + UnitsString[ Units ] + ";\nLAYER " + layerId + ";\nSET WIRE_BEND 2;\n" );
+
+ ResetLogMessage();  //reset for import
+
+ ResetExceptions();  //reset for import
+
+ //check if has fill command
+ if( HasFillCommand ){
+  AddException( "Gerber has a fill command (G36/37) which will cause unfilled sections." );
+   }
+
+ SignalCount = 1;
+
+ if( DoImport ){
+  Progress = "Importing file";
+  dlgRedisplay();
+  }
+ else{
+  Progress = "Simulating Import file";
+  dlgRedisplay();
+  }  //end if-else
+
+
+ //command ref
+ //layers - http://web.mit.edu/xavid/arch/i386_rhel4/help/56.htm
+
+ real x, prevX, prevY, y, i, j, count;
+ string row, fields[], aperture, opCode, currentAperture, wireWidth;
+
+ currentAperture = "";
+
+ real minWireWidth = -1.0;
+
+ //determine min wire width for use with ThinMode
+ for( int l = 0; l < OpCodeCounter; l++ ){
+
+  row = OpCodes[ l ];
+  count = strsplit( fields, row, '\t' );
+
+  aperture = fields[ 0 ];
+
+  wireWidth = GetWireWidth( aperture );
+
+  //parse wire width - changeWidth = "CHANGE WIDTH " + changeWidth + ";\n";
+  count = strsplit( fields, wireWidth, ' ' );
+
+  if( minWireWidth == -1.0 ){
+   //init value
+   minWireWidth = strtod( fields[2] );
+   }
+  else{
+   minWireWidth = min( strtod( fields[2] ), minWireWidth );
+   }  //end if-else
+
+  }  //end j loop
+
+ //clear wire width
+ wireWidth = "";
+
+ //loop thru operation codes
+ for( int k = 0; k < OpCodeCounter; k++ ){
+  //id x y i j current_aperture
+  //4425:D23 1.597900 1.956400 0.000000 0.000000 D03
+
+  //get values from lookup
+  row = OpCodes[ k ];
+  count = strsplit( fields, row, '\t' );
+
+  aperture = fields[ 0 ];
+  x = strtod( fields[1] );
+  y = strtod( fields[2] );
+  i = strtod( fields[3] );
+  j = strtod( fields[4] );
+  opCode = fields[ 5 ];
+
+  AddLogMessage( itos(k) + ":" + OpCodes[ k ] );
+
+  //build command string
+  /*
+  D01 - interpolate
+  D02 - move to
+  D03 - flash
+   */
+
+  //check for change in aperture
+  if( aperture == currentAperture ){
+   //do nothing
+   }
+  else{
+   //aperture changed
+   currentAperture = aperture;
+
+   //get wire width from aperture for drawing wires
+   wireWidth = GetWireWidth( currentAperture );
+   }  //end if-else
+
+  //make sure a wire width was set
+  if( wireWidth == "" ){
+
+   wireWidth = "CHANGE WIDTH 0.00000;\n";
+     }
+
+  //process op codes
+  if( opCode == "D01" ) {
+   //interpolate - draw line from prev point to current point
+   //WIRE 'S$1' ROUND (0 0) (1 1);
+
+   //commands = commands + wireWidth;
+   //commands = commands + "WIRE 'S$" + itos(k) + "' (" + rtos( prevX ) + " " + rtos( prevY ) + ") (" + rtos( x ) + " " + rtos( y ) + ");\n";
+
+   WriteCommands( wireWidth );
+   WriteCommands( "WIRE 'S$" + itos(SignalCount) + "' (" + rtos( prevX ) + " " + rtos( prevY ) + ") (" + rtos( x ) + " " + rtos( y ) + ");\n" );
+
+   SignalCount++;
+   }
+  else if( opCode == "D02" ){
+   //move to - do nothing. OpCodes[] already handles this by keeping track of move tos
+
+   }
+  else if( opCode == "D03" ){
+   //flash - will be aperture definition but it might point to macro
+   //commands = commands + GetApertureDefWires( currentAperture, x, y );
+
+   //if "thin" mode on then get min wire, otherwise use value set
+   if( UseThinMode ){
+
+    //write command to set width
+    //WriteCommands( "CHANGE WIDTH " + rtos( minWireWidth ) + ";\n" );
+
+    WriteCommands( "CHANGE WIDTH 0.0;\n" );
+    }  //end if
+
+   WriteCommands( GetApertureDefWires( currentAperture, x, y ) );
+
+   }
+  else{
+   //??
+
+   }  //end if-else
+
+  //progress meter
+  //if( k % 250 == 0 && doImport ){
+  if( k % 250 == 0 ){
+   Progress = GetProgressBar( OpCodeCounter, k, "Importing file" );
+   dlgRedisplay();
+   }
+
+  prevX = x;
+  prevY = y;
+
+  }  //end for loop
+
+ //status( "Complete" );
+
+ if( DoImport ){
+  Progress = "Importing Done";
+
+  dlgRedisplay();
+  }
+ else{
+  Progress = "File ready for Import";
+
+  dlgRedisplay();
+
+  } //end if-else
+
+ //commands = commands + "WINDOW FIT;\n";
+
+ WriteCommands( "WINDOW FIT;\n" );
+
+ //run ulp again for additional gerbers
+ if( RunUlpAgain ){
+
+  WriteCommands( "run " + argv[0] + ";\n" );
+  }
+ WriteLog();
+
+ if( DoImport && !WriteCommandsToFile ){
+
+  if( RunUlpAgain ){
+   dlgMessageBox( "Your file is being imported. The ulp will launch again after the import is complete." );
+   }
+  else{
+   dlgMessageBox( "Your file is being imported. To load other Gerber files in the same .brd please run the ulp again." );
+   }
+
+  exit( CommandString );
+  }
+ else if( DoImport ){
+  dlgMessageBox( "Command string written to " + UlpPath + "commands_" + itos(EAGLELayerSelection) +  ".scr\n\nImport will start automatically." );
+
+  exit( "SCRIPT " + UlpPath + "commands_" + itos(EAGLELayerSelection) +  ".scr;" );
+  }
+
+ }  //end import
+
+void LoadGerberFile( string filePath ){
+
+ ResetApertures();  //reset apertures so multipel boards can be loaded
+
+ ResetOpCodes();  //reset on each load
+
+ //reset FileLoaded flag
+ FileLoaded = false;
+
+ Progress = "Loading file";
+ dlgRedisplay();
+
+ AddLogMessage( "LoadGerberFile():Loading Gerber file @ " + filePath );
+
+ string lines[];
+ int numLines = fileread( lines, filePath );
+ string type;
+ string line;
+
+ //current and prev lines incase command is across multiple lines
+ int insideMultiLine = false;
+ int isMultiLine = false;
+ int completeCommand = false;
+
+ string multiLineCommand = "";
+
+ if( numLines > WriteCommandThreshold ){
+  WriteCommandsToFile = true;
+
+  dlgMessageBox( "Your Gerber file is >100,000 lines. The import process will generate a command file due to the Gerber file size and complexity." );
+  }  //end if
+
+
+ for( int i = 0; i < numLines; i++ ){
+
+  line = lines[ i ];
+
+  //make sure command is not multi line
+  if( strxstr( line, "^%.*" ) >= 0 && strxstr( line, ".*%$" ) >= 0 && strlen( line ) > 1 ){
+   //extended command. has % start and end
+   AddLogMessage( "LoadGerberFile():Extended command. Found '%' on both ends : " + line );
+
+   completeCommand = true;
+
+   insideMultiLine = false;
+   }
+  else if( strxstr( line, "^%.*" ) >= 0 && strlen( line ) > 1 ){  //start of command
+   AddLogMessage( "LoadGerberFile():Extended command. Found '%' on start only : " + line );
+
+   insideMultiLine = true;
+
+   completeCommand = false;
+
+   //init multi line command
+   multiLineCommand = line;
+   }
+  else if( strxstr( line, ".*%$" ) >= 0 || line == "%" ){   //end of command
+   AddLogMessage( "LoadGerberFile():Extended command. Found '%' on end : " + line );
+
+   insideMultiLine = false;
+
+   completeCommand = true;
+
+   //build full comman string
+   line = multiLineCommand + line;
+   }
+  else if( insideMultiLine ){  //part of command but not start/end
+   AddLogMessage( "LoadGerberFile():Inside extended command : " + line );
+
+   completeCommand = false;
+
+   //append to multi line command
+   multiLineCommand = multiLineCommand + line;
+   }
+  else{
+   AddLogMessage( "LoadGerberFile():Normal command : " + line );
+
+   completeCommand = true;
+
+   insideMultiLine = false;
+
+   }  //end if-else
+
+  //process full line
+  if( completeCommand ){
+   type = ParseLine( line );
+   }
+
+  if( i % 250 == 0 ){
+   //status( "Processing ... Line " + itos( i ) + ", " + GetProgressBar( numLines, i ) );
+
+   Progress = GetProgressBar( numLines, i, "Loading file" );
+
+   dlgRedisplay();
+   }
+
+  }  //end for thru lines
+
+ Progress = "Load Done";
+
+ dlgRedisplay();
+
+ Progress = "Simulating Import";
+
+ dlgRedisplay();
+
+ //simulate load to get exceptions
+ ImportGerberFile( filePath, itos( EAGLELayerSelection ), false );
+
+ dlgRedisplay();
+
+ FileLoaded = true;
+ }  //end load gerber file
+
+
+//******************* main *******************//
+int result = dlgDialog( "EAGLE Gerber Importer") {
+
+ //check to make sure board Is loaded
+ if (!board) {
+  dlgMessageBox( usage + "<hr><b>ERROR: No board!</b><p>\nThis program can only work in the board editor.</p>");
+  exit(-1);
+  }
+
+ //get ulp path so we can write log to it
+ UlpPath = filedir( argv[0] );
+//check if start directory is set
+ string startDir = GetStartDir();
+
+ string fileName = startDir;
+
+
+
+ //build layer list
+ string layerInfo[];
+ int layerCount = 0;
+
+ //used in list views
+ string emptyHeader;
+ int selected = -1;
+
+ //build layer array for lov
+ board(B){
+  B.layers(L){
+
+   layerInfo[ layerCount ] = itos(L.number) + "-" + L.name;
+
+   layerCount++;
+   }  //layers loop
+  }  //board loop
+
+ dlgHBoxLayout dlgSpacing( 900 );  //sets width
+
+ dlgVBoxLayout {
+
+  //file upload
+  dlgHBoxLayout {
+   dlgLabel("Gerber File:");
+
+   dlgStringEdit( fileName );
+
+   dlgPushButton("Select") {
+
+    fileName = dlgFileOpen("Select a file", startDir, "*.*");
+
+
+    if( fileName != "" ){
+    //save directory to start directory
+     SaveStartDir( fileName );
+
+     //try to map layer based on filename
+     EAGLELayerSelection = MapFileNameToLayer( fileName );
+
+     //load file
+     LoadGerberFile( fileName );
+     }
+
+    }  //end button
+/*
+   dlgPushButton("Load") {
+    LoadGerberFile( fileName );
+    }  //end button
+*/
+   dlgPushButton("Import") {
+    if( !FileLoaded ){
+     dlgMessageBox( "Please Load file before importing" );
+     }
+    else{
+     ImportGerberFile( fileName, layerInfo[ EAGLELayerSelection], true );
+
+
+     }
+    }  //end button
+
+   //Load Progress
+   dlgStringEdit( Progress );
+
+   dlgPushButton( "Help" )
+           dlgDialog("Gerber Import Help") {
+             dlgHBoxLayout dlgSpacing(900);
+
+             dlgHBoxLayout {
+               dlgVBoxLayout dlgSpacing (500);
+               dlgTextView( HelpText );
+             }
+
+             dlgHBoxLayout {
+               dlgStretch(1);
+               dlgPushButton( "OK" )
+                 dlgAccept();
+               dlgStretch(1);
+             }
+        };  //end help
+
+   }  //end hbox
+
+  //file list views
+  dlgHBoxLayout {
+
+   dlgGroup("File Attributes") {
+    //Coordinate format - %FS
+    dlgGridLayout {
+
+     dlgCell(0, 0) dlgLabel("Units:");
+     dlgCell(0, 1) dlgStringEdit( UnitsString[ Units ] );
+
+     dlgCell(1, 0) dlgLabel("Format Spec:");
+     dlgCell(1, 1) dlgStringEdit( CoordFormat );
+
+     dlgCell(2, 0) dlgLabel("Zero Ommission:");
+     dlgCell(2, 1) dlgStringEdit( ZeroOmmissionString[ ZeroOmmission ] );
+
+     dlgCell(3, 0) dlgLabel("Abs/Inc. Notation:");
+     dlgCell(3, 1) dlgStringEdit( ValueNotationString[ ValueNotation ] );
+
+     dlgCell(4, 0) dlgLabel("X Precision:");
+     dlgCell(4, 1) dlgIntEdit( XIntegerSize );
+     dlgCell(4, 2) dlgLabel(".");
+     dlgCell(4, 3) dlgIntEdit( XDecimalSize );
+
+     dlgCell(5, 0) dlgLabel("Y Precision:");
+     dlgCell(5, 1) dlgIntEdit( YIntegerSize );
+     dlgCell(5, 2) dlgLabel(".");
+     dlgCell(5, 3) dlgIntEdit( YDecimalSize );
+
+     //import options
+     dlgCell(6, 0) dlgLabel("Import Layer:");
+     dlgCell(6, 1) dlgComboBox( layerInfo, EAGLELayerSelection );
+
+     //write large files to SCR. program will do automatically if gerber is large
+     dlgCell(7, 0) dlgLabel("Write to SCR:");
+     dlgCell(7, 1) dlgCheckBox( "", WriteCommandsToFile );
+     dlgCell(7, 2) dlgLabel( "" );
+     dlgCell(7, 3) dlgLabel( "(Large Files >100k lines)" );
+
+     //debug
+     dlgCell(8, 0) dlgLabel("Debug Mode:");
+     dlgCell(8, 1) dlgCheckBox( "", DebugMode );
+     dlgCell(8, 2) dlgLabel( "" );
+     dlgCell(8, 3) dlgLabel( "(Performance impact)" );
+
+     //write large files to SCR. program will do automatically if gerber is large
+     dlgCell(9, 0) dlgLabel("Thin Wire Mode:");
+     dlgCell(9, 1) dlgCheckBox( "", UseThinMode );
+     dlgCell(9, 2) dlgLabel( "" );
+     dlgCell(9, 3) dlgLabel( "(Fixes Flash Width)" );
+
+     //TODO - other UI elements
+     //seperate layer for aperture flashes?
+
+     //open ULP after run?
+     dlgCell(10, 0) dlgLabel("Run Ulp Again:");
+     dlgCell(10, 1) dlgCheckBox( "", RunUlpAgain );
+     dlgCell(10, 2) dlgLabel( "" );
+     dlgCell(10, 3) dlgLabel( "(Auto run Ulp again)" );
+
+
+     }  //end grid
+    }  //end group
+
+   dlgGroup("Aperture Definitions") {
+    dlgListView( emptyHeader, ApertureDefs, selected );
+    }
+
+   dlgGroup("Aperture Macros") {
+    dlgListView( emptyHeader, ApertureMacros, selected );
+    }
+
+   }  //end hbox
+
+
+  //text view for debugging
+  dlgHBoxLayout {
+   dlgGroup("Processing Messages") {
+    dlgListView( emptyHeader, ParseExceptions, selected);
+
+    //dlgTextView( LogView );
+    }
+   }  //end hbox
+
+  }  //end vbox
+
+ };  //end dialog
