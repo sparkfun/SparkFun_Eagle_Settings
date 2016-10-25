@@ -28,7 +28,7 @@ BRD:
 Grid inch 0.05 on;
 Grid alt inch 0.005;
 Set WIRE_BEND 1; #Route with 45 degree angles
-Set Drill 0.015; #Make vias 0.02"
+Set Drill 0.02; #Make vias 0.02"
 Change Shape Round; #Make vias round
 Change Width 0.01; #Routing width default to 10mil
 Change Isolate 0.012; #BHW Change polygon isolate to 12mil
