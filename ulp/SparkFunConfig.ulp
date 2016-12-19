@@ -9,6 +9,7 @@
 // THIS PROGRAM IS PROVIDED AS IS AND WITHOUT WARRANTY OF ANY KIND, EXPRESSED
 // OR IMPLIED
 
+// 1.2.0 - 2016-12-19 --- Updated list of libraries to match recent fixes to them
 // 1.1.0 - 2016-03-22 --- Minor change, & decided all this made new minor versn 
 // 1.0.3 - 2016-03-21 --- Fixed perm config by parsing & careful mod eagle.scr
 // 1.0.2 - 2016-03-16 --- UI tweaks & permanent now appends to stock eagle.scr
@@ -16,7 +17,7 @@
 // 1.0.0 - 2016-02-15 --- Initial version
 
 #require 6.0000
-string Version = "1.1.0";
+string Version = "1.2.0";
 
 // Source configuration this section will need to be manually updated if the
 // structure on GitHub changes
