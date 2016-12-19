@@ -9,6 +9,8 @@
 // THIS PROGRAM IS PROVIDED AS IS AND WITHOUT WARRANTY OF ANY KIND, EXPRESSED
 // OR IMPLIED
 
+// 1.2.2 - 2016-12-19 --- Removed old CAM job
+// 1.2.1 - 2016-12-19 --- Updated number of libraries
 // 1.2.0 - 2016-12-19 --- Updated list of libraries to match recent fixes to them
 // 1.1.0 - 2016-03-22 --- Minor change, & decided all this made new minor versn 
 // 1.0.3 - 2016-03-21 --- Fixed perm config by parsing & careful mod eagle.scr
@@ -17,7 +19,7 @@
 // 1.0.0 - 2016-02-15 --- Initial version
 
 #require 6.0000
-string Version = "1.2.0";
+string Version = "1.2.2";
 
 // Source configuration this section will need to be manually updated if the
 // structure on GitHub changes
@@ -35,7 +37,7 @@ string localLBRDir = EAGLE_DIR + "/lbr/";
 
 // These lists of libraries DRUs, etc must be manually updated if the structure
 //   on GitHub changes. 
-int numberOfLibraries = 20;
+int numberOfLibraries = 31;
 string libraries[] = {  "LilyPad-Wearables.lbr",
                         "SparkFun-Aesthetics.lbr",
                         "SparkFun-Batteries.lbr",
@@ -101,15 +103,14 @@ int numberOfSCRs = 1;
 string SCRs[] = { "eagle.scr"
 };
 
-int numberOfCAMs = 8;
+int numberOfCAMs = 7;
 string CAMs[] = { "GKO_ONLY.cam",
                   "STENCILcam-GTP_GBP_ONLY.cam",
                   "oshpark-gerb274x-4layer.cam",
                   "oshpark-gerb274x.cam",
                   "sfe-gerb274x-4layer.cam",
                   "sfe-gerb274x-withGBP.cam",
-                  "sfe-gerb274x.cam",
-                  "sfe-gerb274x_GP_FOR_CASTELLATED_HEADERS.cam"
+                  "sfe-gerb274x.cam"
 };
 
 
