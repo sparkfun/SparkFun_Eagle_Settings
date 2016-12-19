@@ -35,25 +35,36 @@ string localLBRDir = EAGLE_DIR + "/lbr/";
 // These lists of libraries DRUs, etc must be manually updated if the structure
 //   on GitHub changes. 
 int numberOfLibraries = 20;
-string libraries[] = {  "GeekAmmo.lbr",
-                        "LilyPad-Wearables.lbr",
+string libraries[] = {  "LilyPad-Wearables.lbr",
                         "SparkFun-Aesthetics.lbr",
-                        "SparkFun-AnalogIC.lbr",
+                        "SparkFun-Batteries.lbr",
                         "SparkFun-Boards.lbr",
                         "SparkFun-Capacitors.lbr",
+                        "SparkFun-Clocks.lbr",
+                        "SparkFun-Coils.lbr",
                         "SparkFun-Connectors.lbr",
-                        "SparkFun-DigitalIC.lbr",
                         "SparkFun-DiscreteSemi.lbr",
                         "SparkFun-Displays.lbr",
                         "SparkFun-Electromechanical.lbr",
-                        "SparkFun-FreqCtrl.lbr",
+                        "SparkFun-Fuses.lbr",
+                        "SparkFun-GPS.lbr",
+                        "SparkFun-Hardware.lbr",
+                        "SparkFun-IC-Amplifiers.lbr",
+                        "SparkFun-IC-Comms.lbr",
+                        "SparkFun-IC-Conversion.lbr",
+                        "SparkFun-IC-Logic.lbr",
+                        "SparkFun-IC-Memory.lbr",
+                        "SparkFun-IC-Microcontroller.lbr",
+                        "SparkFun-IC-Power.lbr",
+                        "SparkFun-IC-Special-Function.lbr",
+                        "SparkFun-Jumpers.lbr",
                         "SparkFun-LED.lbr",
-                        "SparkFun-Passives.lbr",
-                        "SparkFun-PowerIC.lbr",
+                        "SparkFun-PowerSymbols.lbr",
                         "SparkFun-RF.lbr",
                         "SparkFun-Resistors.lbr",
                         "SparkFun-Retired.lbr",
                         "SparkFun-Sensors.lbr",
+                        "SparkFun-Switches.lbr",
                         "User-Submitted.lbr"
 };
 
@@ -90,7 +101,7 @@ string SCRs[] = { "eagle.scr"
 };
 
 int numberOfCAMs = 8;
-string CAMs[] = { "GTLONLY.cam",
+string CAMs[] = { "GKO_ONLY.cam",
                   "STENCILcam-GTP_GBP_ONLY.cam",
                   "oshpark-gerb274x-4layer.cam",
                   "oshpark-gerb274x.cam",
