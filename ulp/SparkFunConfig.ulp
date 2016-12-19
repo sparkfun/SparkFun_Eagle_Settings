@@ -9,6 +9,7 @@
 // THIS PROGRAM IS PROVIDED AS IS AND WITHOUT WARRANTY OF ANY KIND, EXPRESSED
 // OR IMPLIED
 
+// 1.2.2 - 2016-12-19 --- Removed old CAM job
 // 1.2.1 - 2016-12-19 --- Updated number of libraries
 // 1.2.0 - 2016-12-19 --- Updated list of libraries to match recent fixes to them
 // 1.1.0 - 2016-03-22 --- Minor change, & decided all this made new minor versn 
@@ -18,7 +19,7 @@
 // 1.0.0 - 2016-02-15 --- Initial version
 
 #require 6.0000
-string Version = "1.2.1";
+string Version = "1.2.2";
 
 // Source configuration this section will need to be manually updated if the
 // structure on GitHub changes
