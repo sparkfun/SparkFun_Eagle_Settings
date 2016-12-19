@@ -102,15 +102,14 @@ int numberOfSCRs = 1;
 string SCRs[] = { "eagle.scr"
 };
 
-int numberOfCAMs = 8;
+int numberOfCAMs = 7;
 string CAMs[] = { "GKO_ONLY.cam",
                   "STENCILcam-GTP_GBP_ONLY.cam",
                   "oshpark-gerb274x-4layer.cam",
                   "oshpark-gerb274x.cam",
                   "sfe-gerb274x-4layer.cam",
                   "sfe-gerb274x-withGBP.cam",
-                  "sfe-gerb274x.cam",
-                  "sfe-gerb274x_GP_FOR_CASTELLATED_HEADERS.cam"
+                  "sfe-gerb274x.cam"
 };
 
 
