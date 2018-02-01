@@ -1,5 +1,4 @@
 description[en] = <b>SparkFun 2 Layer Design Rule Checks - Limits for PCBWay</b>\n<p>\n If you're ordering from PCBWay, these are the 'free' minimums.
-
 layerSetup = (1*16)
 mtCopper = 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm
 mtIsolate = 1.5mm 0.15mm 0.2mm 0.15mm 0.2mm 0.15mm 0.2mm 0.15mm 0.2mm 0.15mm 0.2mm 0.15mm 0.2mm 0.15mm 0.2mm
