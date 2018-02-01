@@ -1,0 +1,191 @@
+#usage "en: <b>Copy a given board to fill a panel just over 75x75 mm with 0.25mm gap between designs to allow for V-score trench.</b> PCBWay requires the user to create panels that are at least 75x75mm. If the panel is smaller than this they will reject it because their v-score machine can't handle it. This ULP takes a given design and replicates it until the panel is just over 75x75mm. It also adds dimension lines between copies and v-score text so that PCBWay knows where to v-score."
+"<p>Usage: run sparkx-panelizer</p>"
+"<p>Author: <author>Nathan Seidle &lt;inathan@sparkfun.com&gt;</author><br />"
+"Version: <em>1.0</em></p>"
+
+//Original board dimension code came from https://gist.github.com/itavero/8042433
+
+string bigScript = ""; //The big string of commands that we will eventually run as a script
+
+//Settings
+//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+real over = 0.1; //When copying the board, draw a grouping box that is this many inches greater than the dimension of the board. 0.1" works well.
+
+//PCBWay requires that panels be at least 75x75mm.
+real minPanelSizeX = (75 * 0.0393701);  //Min panel X size in mm, converted to inches
+real minPanelSizeY = (75 * 0.0393701);
+
+//PCBWay needs at least 0.02 inches between copies
+real vScoreGap = 0.02; //Inches between copies
+//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+void panelizer() {
+    //Find min/max dimensions of this board
+    char firstPoint = 'y';
+    real xMax = 0;
+    real yMax = 0;
+    real xMin = 0;
+    real yMin = 0;
+	board(B) {
+
+        B.wires(W) {
+            if (W.layer == LAYER_DIMENSION) {
+                // Wire is on dimension layer
+                real wx1 = u2inch(W.x1);
+                real wy1 = u2inch(W.y1);
+                real wx2 = u2inch(W.x2);
+                real wy2 = u2inch(W.y2);
+
+                // Start point of wire
+                if (firstPoint == 'y') {
+                    firstPoint = 'n';
+                    xMax = wx1;
+                    xMin = wx1;
+                    yMax = wy1;
+                    yMin = wy1;
+                }
+                else {
+                    if (wx1 > xMax) {
+                        xMax = wx1;
+                    }
+                    if (wx1 < xMin) {
+                        xMin = wx1;
+                    }
+                    if (wy1 > yMax) {
+                        yMax = wy1;
+                    }
+                    if (wy1 < yMin) {
+                        yMin = wy1;
+                    }
+                }
+
+                // End point of wire
+                if (wx2 > xMax) {
+                    xMax = wx2;
+                }
+                if (wx2 < xMin) {
+                    xMin = wx2;
+                }
+                if (wy2 > yMax) {
+                    yMax = wy2;
+                }
+                if (wy2 < yMin) {
+                    yMin = wy2;
+                }
+
+            }
+        }
+
+    }
+
+    real width = xMax - xMin; //In inches
+    real height = yMax - yMin;
+	
+    string s = "";
+
+	//Calculate the number of copies we need to achieve our min panel size
+	int numberOfColumns = ceil(minPanelSizeX / (width + over));
+	if(numberOfColumns * (width + over) - over < minPanelSizeX) numberOfColumns++;
+	
+	int numberOfRows = ceil(minPanelSizeY / (height + over));
+	if(numberOfRows * (height + over) - over < minPanelSizeY) numberOfRows++;
+
+    //Turn off all layers but the ones we want to copy
+    bigScript += "DISPLAY NONE; DISPLAY 1 16 17 18 20 21 22 23 24 45; DISPLAY -25 -26 -27 -28 -51;\n";
+
+    //Draw a box slightly larger that the dimensions of the board
+	real lowerX = xMin - over;
+	real lowerY = yMin - over;
+	real upperX = xMax + over;
+	real upperY = yMax + over;
+	
+    bigScript += "GRID INCH 0.05 ON;\n";
+
+    sprintf(s, "GROUP (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n", lowerX, lowerY, upperX, lowerY, upperX, upperY, lowerX, upperY, lowerX, lowerY);
+    bigScript += s;
+
+    //Cut from the lower left corner of group
+    sprintf(s, "CUT (%f %f);\n", xMin, yMin);
+    bigScript += s;
+
+    //Create new board file
+    string panelFileName = "myPanel";
+    bigScript += "SET CONFIRM YES;\n";
+    sprintf(s, "EDIT %s.BRD;\n", panelFileName);
+    bigScript += s;
+    bigScript += "SET CONFIRM OFF;\n";
+
+    //Go back to inch grid
+	bigScript += "GRID INCH 0.05 ON;GRID ALT INCH 0.005;\n";
+
+	//Paste the copies to fill the panel
+	real xCoord = 0;
+	real yCoord = 0;
+	for(int row = 0 ; row < numberOfRows ; row++)
+	{
+		for(int column = 0 ; column < numberOfColumns ; column++)
+		{
+			xCoord = (column * width) + (column * vScoreGap);
+			yCoord = (row * height) + (row * vScoreGap);
+
+			sprintf(s, "PASTE (%f %f);\n", xCoord, yCoord);
+			bigScript += s;
+		}
+	}
+	
+	//Draw v-score lines between copies
+	bigScript += "LAYER 20;\n"; //Dimension layer
+	for(int column = 1 ; column < numberOfColumns ; column++)
+	{
+		xCoord = ((width + (vScoreGap / 2)) * column) + ((column-1) * (vScoreGap / 2));
+
+		real yCoordLow = 0 - 0.25;
+
+		real yCoordHigh = (numberOfRows * height) + (numberOfRows * vScoreGap) + 0.25;
+
+		sprintf(s, "WIRE (%f %f) (%f %f);\n", xCoord, yCoordLow, xCoord, yCoordHigh);
+		bigScript += s;
+
+		//Add the word 'v-score' lines
+		sprintf(s, "TEXT v-score (%f %f);\n", xCoord - 0.225, yCoordHigh  + 0.035);
+		bigScript += s;
+	}
+
+	for(row = 1 ; row < numberOfRows ; row++)
+	{
+		yCoord = ((height + (vScoreGap / 2)) * row) + ((row-1) * (vScoreGap / 2));
+
+		real xCoordLow = 0 - 0.25;
+
+		real xCoordHigh = (numberOfColumns * width) + (numberOfColumns * vScoreGap) + 0.25;
+
+		sprintf(s, "WIRE (%f %f) (%f %f);\n", xCoordLow, yCoord, xCoordHigh, yCoord);
+		bigScript += s;
+
+		//Add the word 'v-score' lines
+		sprintf(s, "TEXT v-score (%f %f);\n", xCoordHigh + 0.035, yCoord - 0.02);
+		bigScript += s;
+	}
+	
+	//Load the PCBWay DRC
+    bigScript += "DRC LOAD SparkFun-2-layer-PCBWay-LIMIT.dru;\n";
+
+	//Update the polygon pours
+    bigScript += "RATSNEST;\n";
+
+    exit(bigScript); //Execute this generated ULP
+
+    string temp;
+    sprintf(temp, "Board x: %f y: %f", width, height);
+    dlgMessageBox(temp);
+}
+
+if (board)
+{
+    panelizer();
+}
+else
+{
+    dlgMessageBox("Please run SparkX Panelizer from a board.");
+    exit(1);
+}
