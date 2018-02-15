@@ -1,0 +1,342 @@
+#usage "en: <b>Copy a given board to fill a panel just over 75x75 mm with 0.25mm gap between designs to allow for V-score trench.</b> PCBWay requires the user to create panels that are at least 75x75mm. If the panel is smaller than this they will reject it because their v-score machine can't handle it. This ULP takes a given design and replicates it until the panel is just over 75x75mm. It also adds dimension lines between copies and v-score text so that PCBWay knows where to v-score."
+"<p>Usage: run sparkx-panelizer</p>"
+"<p>Author: <author>Nathan Seidle &lt;inathan@sparkfun.com&gt;</author><br />"
+"Version: <em>1.0</em></p>"
+
+/*
+	Original board dimension code came from https://gist.github.com/itavero/8042433
+	CAM code comes from https://www.element14.com/community/thread/22904/l/re-can-a-ulp-initiate-a-cam-job?displayFullThread=true
+
+	See EAGLE help file for "Command Line Options"
+	
+	The ZIP creation relies on 7zip. Specifically 7za.exe the stand-alone version of 7zip. To get this you need
+	to first install 7zip, then download the "7-zip Extra" 7z stand alone console version. Use 7zip to open the 7z
+	archive. In the archive you should see the 7za.exe file. Put this in the same directory as this ULP.
+	
+	TODO:
+	
+	Add option to preview in gerbV upon completion
+*/
+
+string configFile  = filesetext(argv[0], ".cfg");
+
+//Config options we want to save
+int outputGerbers = 1;
+int outputTopStencil = 1;
+int outputBottomStencil = 1;
+int zipOutput = 1;
+	
+void configWrite(){
+  output(configFile){
+    printf("%d\n", outputGerbers);
+    printf("%d\n", outputTopStencil);
+    printf("%d\n", outputBottomStencil);
+    printf("%d\n", zipOutput);
+  }
+}
+
+void configRead() {
+  if(filesize(configFile)){ //Check if file exists
+    string data[];
+    int line = fileread(data, configFile);
+    if(line >= 4){
+      outputGerbers			= strtol(data[0]);
+      outputTopStencil		= strtol(data[1]);
+      outputBottomStencil	= strtol(data[2]);
+      zipOutput				= strtol(data[3]);
+    }
+  }
+}
+
+//Detect if board has four layers
+//Returns 0 if not found
+int hasInternalLayers()
+{
+	board(B) {
+		B.layers(L) {
+			if(L.used && L.number == 2)
+			{
+				return(1);
+			}
+			if(L.used && L.number == 15)
+			{
+				return(1);
+			}
+		}
+	}
+
+	return(0); //Nope
+}
+
+//Detect if parts are on the bottom of the board
+//Returns zero if false
+int hasBottomParts()
+{
+	board(B) {
+		B.elements(E) {
+			E.package.contacts(C) {
+				if (C.smd && C.smd.layer == 16) {
+					return(1); //Found it!
+				}
+			}
+		}
+	}
+	
+	return(0); //Nope
+}
+
+string get_project_path() {
+    if (board)     board(B)     return(filedir(B.name));
+    if (schematic) schematic(B) return(filedir(B.name));
+}
+
+//Change any / in a string to \
+//Useful for directory structure before calling a cmd
+string convertForwardToBackSlashes(string thing)
+{
+	//Convert forward slashes to back slashes so we can run system command
+	int pos = strrchr(thing, '/');
+	while (pos >= 0) 
+	{
+		thing = strsub(thing, 0, pos) + "\\\\" + strsub(thing, pos + 1, strlen(thing)); //Remove and replace
+		pos = strrchr(thing, '/'); //Look for the next forward slash
+	}
+	return(thing);
+}
+
+//CAM the current BRD file
+void createGerbers()
+{
+	//Get the name of this brd (no extension, no directory)
+	string baseFileName = "";
+	board(B) {
+		baseFileName = filesetext(filename(B.name), ""); 
+	}
+
+	//Convert forward slashes to back slashes so we can run system commands
+	string projectDirectory = convertForwardToBackSlashes(get_project_path());
+	
+	string commandToRun = "cmd.exe /C echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
+	string s = "";
+	
+	//Generate Gerbers
+	string fileExtension = "";
+	string layerNumbers = "";
+	string device = "";
+	string mirror = "";
+	for(int x = 0 ; x < 12 ; x++)
+	{
+		if(x == 0) //Top copper
+		{
+			if(outputGerbers == 0) continue;
+			fileExtension = "GTL";
+			layerNumbers = "1 17 18";
+			commandToRun += " & echo Running Top Copper";
+		}
+		else if(x == 1) //Top silk
+		{
+			if(outputGerbers == 0) continue;
+			fileExtension = "GTO";
+			layerNumbers = "21";
+			commandToRun += " & echo Running Top Silk";
+		}
+		else if(x == 2) //Top mask
+		{
+			if(outputGerbers == 0) continue;
+			fileExtension = "GTS";
+			layerNumbers = "29";
+			commandToRun += " & echo Running Top Mask";
+		}
+		else if(x == 3) //Bottom copper
+		{
+			if(outputGerbers == 0) continue;
+			fileExtension = "GBL";
+			layerNumbers = "16 17 18";
+			commandToRun += " & echo Running Bottom Copper";
+		}
+		else if(x == 4) //Bottom silk
+		{
+			if(outputGerbers == 0) continue;
+			fileExtension = "GBO";
+			layerNumbers = "22";
+			commandToRun += " & echo Running Bottom Silk";
+		}
+		else if(x == 5) //Bottom mask
+		{
+			if(outputGerbers == 0) continue;
+			fileExtension = "GBS";
+			layerNumbers = "30";
+			commandToRun += " & echo Running Bottom Mask";
+		}
+		else if(x == 6) //Outline/keepout
+		{
+			if(outputGerbers == 0) continue;
+			fileExtension = "GKO";
+			layerNumbers = "20";
+			commandToRun += " & echo Running Board Outline";
+		}
+		else if(x == 7) //Top paste
+		{
+			if(outputTopStencil == 0) continue;
+			fileExtension = "GTP";
+			layerNumbers = "31";
+			commandToRun += " & echo Running Top Paste";
+		}
+		else if(x == 8) //Bottom paste
+		{
+			if(outputBottomStencil == 0) continue;
+			if(hasBottomParts() == 0) continue;
+			fileExtension = "GBP";
+			layerNumbers = "32";
+			commandToRun += " & echo Running Bottom Paste";
+		}
+		else if(x == 9) //Drill file
+		{
+			if(outputGerbers == 0) continue;
+			fileExtension = "TXT";
+			layerNumbers = "44 45";
+			commandToRun += " & echo Running Drill File";
+		}
+		else if(x == 10) //Inner layer 2
+		{
+			if(outputGerbers == 0) continue;
+			if(hasInternalLayers() == 0) continue;
+			fileExtension = "GL2";
+			layerNumbers = "2 17 18";
+			commandToRun += " & echo Running Layer 2";
+		}
+		else if(x == 11) //Inner layer 15
+		{
+			if(outputGerbers == 0) continue;
+			if(hasInternalLayers() == 0) continue;
+			fileExtension = "GL3";
+			layerNumbers = "15 17 18";
+			commandToRun += " & echo Running Layer 15";
+		}
+		
+		//Deal with special layers
+		device = "GERBER_RS274X";
+		if(x == 9) device = "EXCELLON_24"; //Drill file
+
+		mirror = "-m-"; //No mirror
+		if(x == 8) mirror = "-m+"; //Mirror the bottom paste layer
+		
+		//Add this CAM operation to the list
+		sprintf(s, " eagle -X -N- %s -f+ -O+ -c+ -x0 -y0 -d%s -o \"%s.%s\" \"%s\" %s",
+			mirror,
+			device,
+			baseFileName, 
+			fileExtension,
+			projectDirectory + baseFileName + ".brd",
+			layerNumbers
+			);
+
+		commandToRun += " & " + s;
+	}
+	
+	//Zip files using 7za (7za.exe should be located in same directory as ULP
+	if(zipOutput == 1)
+	{
+		string sevenZaLocation = convertForwardToBackSlashes(filedir(argv[0]));
+		sevenZaLocation += "\\7za.exe";
+		
+		string outputFileName = projectDirectory + baseFileName + ".zip";
+		string fileList ="";
+		
+		//Get all the wanted files
+		fileList += "\"" + projectDirectory + baseFileName + ".GTL" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GTO" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GTS" + "\"";
+
+		fileList += " \"" + projectDirectory + baseFileName + ".GBL" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GBO" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GBS" + "\"";
+
+		if(hasInternalLayers() == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GL2" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL3" + "\"";
+		}
+
+		fileList += " \"" + projectDirectory + baseFileName + ".GKO" + "\"";
+		
+		fileList += " \"" + projectDirectory + baseFileName + ".TXT" + "\""; //Get drill file
+
+		if(outputTopStencil == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GTP" + "\"";
+		}
+		if(outputBottomStencil == 1 && hasBottomParts() == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GBP" + "\"";
+		}
+			
+		sprintf(s, "%s a \"%s\" %s",
+			sevenZaLocation,
+			outputFileName,
+			fileList
+			);
+		
+		commandToRun += " & " + s;
+	}
+
+	//dlgMessageBox(commandToRun);
+	if(system(commandToRun) != 0)
+	{
+		dlgMessageBox("Error: Command failed.", "OK");
+	}
+	else
+	{
+		dlgMessageBox("Gerber generation complete.");
+	}
+}
+
+if (board)
+{
+	configRead(); //Read any settings if available
+
+	//GUI
+    int dstatus = dlgDialog("Gerber Generation Options"){
+
+		dlgHBoxLayout{ dlgSpacing(300); } 
+		
+		if(hasInternalLayers() == 1)
+		{
+			dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This is a four layer board\t"); } 
+		}
+		if(hasBottomParts() == 1)
+		{
+			
+			dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This board has parts on bottom side\t");  } 
+			outputBottomStencil = 1; //Persuade user to generate these gerbers
+		}
+
+   	    dlgHBoxLayout{ dlgLabel("\t"); } 
+
+		dlgGroup("Output Files") {
+			dlgHBoxLayout{ dlgCheckBox("Gerbers", outputGerbers); } 
+			dlgHBoxLayout{ dlgCheckBox("Top Stencil", outputTopStencil); } 
+			dlgHBoxLayout{ dlgCheckBox("Bottom Stencil", outputBottomStencil); } 
+			dlgHBoxLayout{ dlgCheckBox("Zip Output Files", zipOutput); } 
+		}
+
+		dlgPushButton("Generate") {
+			configWrite(); //Record current settings
+
+			createGerbers(); //Generate gerbers for this BRD
+
+			//Preview in gerbV
+
+			dlgAccept(-1);
+		}           
+
+		dlgStretch(1);
+    };
+	
+	configWrite(); //Record current settings
+}
+else
+{
+    dlgMessageBox("Please run SparkFun CAMmer from a board.");
+    exit(1);
+}

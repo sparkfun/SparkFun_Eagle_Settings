@@ -8,17 +8,25 @@
 string bigScript = ""; //The big string of commands that we will eventually run as a script
 
 /*
+add bottom stencil order
 
+eagle -X- -f+ -O+ -x0 -y0 -dGERBER_RS274X -o C:\Dropbox\Projects\RedBoard\Hardware\RedBoard.brd
+eagle -X- -f+ -O+ -x0 -y0 -dGERBER_RS274X C:\Dropbox\Projects\RedBoard\Hardware\RedBoard.brd
+eagle -X- -x0 -y0 -dGERBER_RS274X C:\Dropbox\Projects\RedBoard\Hardware\RedBoard.brd
 
+eagle -X- -dGERBER_RS274X C:\Users\nathan.seidle\Dropbox\Projects\RedBoard\Hardware\RedBoard.brd
 */
 
 string configFile  = filesetext(argv[0], ".cfg");
 
 //Config options we want to save
-real      verticalGap         = 0.02; //PCBWay needs at least 0.02 inches between copies
-real      horizontalGap       = 0.02;
-real      panelSizeX          = 3.0;
-real      panelSizeY          = 2.0;
+real		verticalGap			= 0.02; //PCBWay needs at least 0.02 inches between copies
+real		horizontalGap		= 0.02;
+real		panelSizeX			= 3.0;
+real		panelSizeY			= 2.0;
+int		vScoreIndicators	= 0;
+int		drawPanelBorders 	= 0;
+int 		runCAM					= 0;
 
 void configWrite(){
   output(configFile){
@@ -26,6 +34,9 @@ void configWrite(){
     printf("%.5f\n", horizontalGap);
     printf("%.5f\n", panelSizeX);
     printf("%.5f\n", panelSizeY);
+    printf("%d\n", vScoreIndicators);
+    printf("%d\n", drawPanelBorders);
+    printf("%d\n", runCAM);
   }
 }
 
@@ -34,10 +45,13 @@ void configRead() {
     string data[];
     int line = fileread(data, configFile);
     if(line >= 4){
-      verticalGap           = strtod(data[0]);
-      horizontalGap         = strtod(data[1]);
-      panelSizeX          	= strtod(data[2]);
-      panelSizeY       	    = strtod(data[3]);
+      verticalGap				= strtod(data[0]);
+      horizontalGap			= strtod(data[1]);
+      panelSizeX				= strtod(data[2]);
+      panelSizeY				= strtod(data[3]);
+      vScoreIndicators		= strtol(data[4]);
+      drawPanelBorders	= strtol(data[5]);
+      runCAM					= strtol(data[6]);
     }
   }
 }
@@ -55,13 +69,14 @@ real overhang_yMax = 0;
 real overhang_xMin = 0;
 real overhang_yMin = 0;
 
+string overHangingParts = "false";
 real verticalGapNeeded = 0;
 real horizontalGapNeeded = 0;
 
-string fourLayers = "false";
+int fourLayers = 0;
+int bottomComponents = 0;
 
 string panelFileLocation = "";
-
 
 void panelizer() {
 	
@@ -95,7 +110,7 @@ void panelizer() {
 
 	//Create new board file
     bigScript += "SET CONFIRM YES;\n";
-    sprintf(s, "EDIT %s;\n", panelFileLocation);
+    sprintf(s, "EDIT '%s';\n", panelFileLocation);
     bigScript += s;
     bigScript += "SET CONFIRM OFF;\n";
 
@@ -130,7 +145,7 @@ void panelizer() {
 				if(column == numberOfColumns - 1) //Add last text
 				{
 					bigScript += "LAYER 20;\n"; //Dimension layer
-					sprintf(s, "CHANGE ALIGN CENTER; TEXT 'Route Out' (%f %f);\n", xCoord + (designWidth/2) + designWidth, yCoord - (horizontalGap/2));
+					sprintf(s, "CHANGE ALIGN CENTER; TEXT 'Route Out' R90 (%f %f);\n", xCoord + (verticalGap/2) + designWidth, yCoord + (designHeight/2));
 					bigScript += s;
 				}
 			}
@@ -144,107 +159,164 @@ void panelizer() {
 				if(row == numberOfRows - 1) //Add last text
 				{
 					bigScript += "LAYER 20;\n"; //Dimension layer
-					sprintf(s, "CHANGE ALIGN CENTER; TEXT 'Route Out' (%f %f);\n", xCoord + (designWidth/2), yCoord - (horizontalGap/2));
+					sprintf(s, "CHANGE ALIGN CENTER; TEXT 'Route Out' (%f %f);\n", xCoord + (designWidth/2), yCoord + (horizontalGap/2) + designHeight);
 					bigScript += s;
 				}
 			}
-
 		}
-
 	}
 	
-	//Add borders to four sides
-	real borderWidth = 0.25;
+	//Draw v-score lines between copies
+	if(vScoreIndicators == 1)
+	{
+		bigScript += "LAYER 20;\n"; //Dimension layer
+		
+		//Add vertical lines
+		for(int column = 1 ; column < numberOfColumns ; column++)
+		{
+			xCoord = ((designWidth + (verticalGap / 2)) * column) + ((column-1) * (verticalGap / 2));
+
+			real yCoordLow = 0;
+
+			real yCoordHigh = (numberOfRows * designHeight) + (numberOfRows * horizontalGap) + 0.25;
+
+			sprintf(s, "WIRE (%f %f) (%f %f);\n", xCoord, yCoordLow, xCoord, yCoordHigh);
+			bigScript += s;
+
+			//Add the word 'v-score' lines
+			sprintf(s, "TEXT v-score (%f %f);\n", xCoord, yCoordHigh  + 0.09);
+			bigScript += s;
+		}
+
+		//Add horizontal lines
+		for(row = 1 ; row < numberOfRows ; row++)
+		{
+			yCoord = ((designHeight + (horizontalGap / 2)) * row) + ((row-1) * (horizontalGap / 2));
+
+			real xCoordLow = 0;
+
+			real xCoordHigh = (numberOfColumns * designWidth) + (numberOfColumns * verticalGap) + 0.25;
+
+			sprintf(s, "WIRE (%f %f) (%f %f);\n", xCoordLow, yCoord, xCoordHigh, yCoord);
+			bigScript += s;
+
+			//Add the word 'v-score' lines
+			sprintf(s, "TEXT v-score (%f %f);\n", xCoordHigh + 0.3, yCoord);
+			bigScript += s;
+		}
+	}
 	
-	bigScript += "LAYER 20;\n"; //Dimension layer
+	if(drawPanelBorders == 1)
+	{
+		//Add borders to four sides
+		real borderWidth = 0.25;
+		
+		bigScript += "LAYER 20;\n"; //Dimension layer
 
-	real panelWidth = (designWidth * numberOfColumns) + (verticalGap * (numberOfColumns - 1));
-	real panelHeight = (designHeight * numberOfRows) + (horizontalGap * (numberOfRows - 1));
+		real panelWidth = (designWidth * numberOfColumns) + (verticalGap * (numberOfColumns - 1));
+		real panelHeight = (designHeight * numberOfRows) + (horizontalGap * (numberOfRows - 1));
 
-	//Draw lower box
-	real lowerXleft = 0 - verticalGap - borderWidth;
-	real lowerXright = panelWidth + borderWidth + verticalGap;
-	real lowerYupper = 0 - horizontalGap;
-	real lowerYlower = lowerYupper - borderWidth;
-	
-	sprintf(s, "WIRE (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n", 
-	lowerXleft, lowerYupper, 
-	lowerXright, lowerYupper,
-	lowerXright, lowerYlower, 
-	lowerXleft, lowerYlower,
-	lowerXleft, lowerYupper
-	);
-	bigScript += s;
+		//Draw lower box
+		real lowerXleft = 0 - verticalGap - borderWidth;
+		real lowerXright = panelWidth + borderWidth + verticalGap;
+		real lowerYupper = 0 - horizontalGap;
+		real lowerYlower = lowerYupper - borderWidth;
+		
+		sprintf(s, "WIRE (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n", 
+		lowerXleft, lowerYupper, 
+		lowerXright, lowerYupper,
+		lowerXright, lowerYlower, 
+		lowerXleft, lowerYlower,
+		lowerXleft, lowerYupper
+		);
+		bigScript += s;
 
-	//Draw right box
-	real rightXleft = panelWidth + verticalGap;
-	real rightXright = rightXleft + borderWidth;
-	real rightYupper = panelHeight + horizontalGap - 0.02;
-	real rightYlower = 0 - horizontalGap + 0.02;
-	
-	sprintf(s, "WIRE (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n", 
-	rightXleft, rightYupper, 
-	rightXright, rightYupper,
-	rightXright, rightYlower, 
-	rightXleft, rightYlower,
-	rightXleft, rightYupper
-	);
-	bigScript += s;
+		//Draw right box
+		real rightXleft = panelWidth + verticalGap;
+		real rightXright = rightXleft + borderWidth;
+		real rightYupper = panelHeight + horizontalGap - 0.02;
+		real rightYlower = 0 - horizontalGap + 0.02;
+		
+		sprintf(s, "WIRE (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n", 
+		rightXleft, rightYupper, 
+		rightXright, rightYupper,
+		rightXright, rightYlower, 
+		rightXleft, rightYlower,
+		rightXleft, rightYupper
+		);
+		bigScript += s;
 
-	//Draw top box
-	real topXleft = 0 - verticalGap - borderWidth;
-	real topXright = panelWidth + borderWidth + verticalGap;
-	real topYlower = panelHeight + horizontalGap;
-	real topYupper = topYlower + borderWidth;
-	
-	sprintf(s, "WIRE (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n", 
-	topXleft, topYupper, 
-	topXright, topYupper,
-	topXright, topYlower, 
-	topXleft, topYlower,
-	topXleft, topYupper
-	);
-	bigScript += s;
+		//Draw top box
+		real topXleft = 0 - verticalGap - borderWidth;
+		real topXright = panelWidth + borderWidth + verticalGap;
+		real topYlower = panelHeight + horizontalGap;
+		real topYupper = topYlower + borderWidth;
+		
+		sprintf(s, "WIRE (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n", 
+		topXleft, topYupper, 
+		topXright, topYupper,
+		topXright, topYlower, 
+		topXleft, topYlower,
+		topXleft, topYupper
+		);
+		bigScript += s;
 
-	//Draw left box
-	real leftXleft = 0 - borderWidth - verticalGap;
-	real leftXright =  0 - verticalGap;
-	real leftYlower = 0 - horizontalGap + 0.02;
-	real leftYupper = panelHeight + horizontalGap - 0.02;
-	
-	sprintf(s, "WIRE (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n", 
-	leftXleft, leftYupper, 
-	leftXright, leftYupper,
-	leftXright, leftYlower, 
-	leftXleft, leftYlower,
-	leftXleft, leftYupper
-	);
-	bigScript += s;
+		//Draw left box
+		real leftXleft = 0 - borderWidth - verticalGap;
+		real leftXright =  0 - verticalGap;
+		real leftYlower = 0 - horizontalGap + 0.02;
+		real leftYupper = panelHeight + horizontalGap - 0.02;
+		
+		sprintf(s, "WIRE (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n", 
+		leftXleft, leftYupper, 
+		leftXright, leftYupper,
+		leftXright, leftYlower, 
+		leftXleft, leftYlower,
+		leftXleft, leftYupper
+		);
+		bigScript += s;
 
-	//Add three fiducials so that the panel cannot be reversed in the machine without CV noticing
-	
-	//Upper two fiducials live on one breakaway edge
-	//Fiducials are not in center of border, they are nearer the panel so the clips don't obstruct their view
-    bigScript += "USE SPARKFUN-AESTHETICS.LBR;\n";
-	real fiducial_x_1 = 0 + borderWidth + verticalGap;
-	real fiducial_y_1 = panelHeight + (borderWidth / 4);
-	sprintf(s, "ADD FIDUCIAL-1X2 (%f %f);\n", fiducial_x_1, fiducial_y_1);
-	bigScript += s;
+		//Add three fiducials so that the panel cannot be reversed in the machine without CV noticing
+		
+		//Upper two fiducials live on one breakaway edge
+		//Fiducials are not in center of border, they are nearer the panel so the clips don't obstruct their view
+		real fiducial_x_1 = 0 + borderWidth + verticalGap;
+		real fiducial_y_1 = panelHeight + verticalGap + (borderWidth / 4);
+		bigScript += "LAYER 1;\n"; //Top layer
+		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%f %f);\n", fiducial_x_1, fiducial_y_1);
+		bigScript += s;
+		if(bottomComponents == 1)
+		{
+			sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS MR0 (%f %f);\n", fiducial_x_1, fiducial_y_1);
+			bigScript += s;
+		}
+		
+		real fiducial_x_2 = panelWidth - borderWidth - verticalGap;
+		real fiducial_y_2 = panelHeight + verticalGap + (borderWidth / 4);
+		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%f %f);\n", fiducial_x_2, fiducial_y_2);
+		bigScript += s;
+		if(bottomComponents == 1)
+		{
+			sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS MR0 (%f %f);\n", fiducial_x_2, fiducial_y_2);
+			bigScript += s;
+		}
 
-	real fiducial_x_2 = panelWidth - borderWidth - verticalGap;
-	real fiducial_y_2 = panelHeight + (borderWidth / 4);
-	sprintf(s, "ADD FIDUCIAL-1X2 (%f %f);\n", fiducial_x_2, fiducial_y_2);
-	bigScript += s;
+		//Lower one - larger fiducial
+		real fiducial_x_3 = 0 + borderWidth + verticalGap;
+		real fiducial_y_3 = 0 - horizontalGap - (borderWidth / 4);
+		sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED (%f %f);\n", fiducial_x_3, fiducial_y_3);
+		bigScript += s;
+		if(bottomComponents == 1)
+		{
+			sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED MR0 (%f %f);\n", fiducial_x_3, fiducial_y_3);
+			bigScript += s;
+		}
 
-	//Lower one - larger fiducial
-    bigScript += "USE SPARKFUN-RETIRED.LBR;\n";
-	real fiducial_x_3 = 0 + borderWidth + verticalGap;
-	real fiducial_y_3 = 0 - (borderWidth / 4) - horizontalGap;
-	sprintf(s, "ADD FIDUCIAL-1.5X3 (%f %f);\n", fiducial_x_3, fiducial_y_3);
-	bigScript += s;
+		bigScript += "LAYER 1;\n"; //Top layer
+	}
 
 	//Load the appropriate DRC
-	if(fourLayers == "false")
+	if(fourLayers == 0)
 	{
 		bigScript += "DRC LOAD SparkFun-2-layer-PCBWay-LIMIT.dru;\n";
 	}
@@ -262,30 +334,41 @@ void panelizer() {
     bigScript += "SET CONFIRM OFF;\n";
 }
 
-//Warn user if four layers are detected
+//Detect if board has four layers
 void testFourLayer()
 {
-	fourLayers = "false";
+	fourLayers = 0;
 	
 	board(B) {
 		B.layers(L) {
 			if(L.used && L.number == 2)
 			{
-				fourLayers = "true";
+				fourLayers = 1;
 			}
 			if(L.used && L.number == 15)
 			{
-				fourLayers = "true";
+				fourLayers = 1;
 			}
 		}
 	}
-
-	if(fourLayers == "true")
-	{
-		dlgMessageBox("Whoa, this is a four layer board. We will pre-load the 4-layer DRU for you.");
-	}
-	
 }
+
+//Detect if parts are on the bottom of the board
+void testBottomParts()
+{
+	bottomComponents = 0;
+	
+	board(B) {
+		B.elements(E) {
+			E.package.contacts(C) {
+				if (C.smd && C.smd.layer == 16) {
+					bottomComponents = 1;
+				}
+			}
+		}
+	}
+}
+
 
 //Look at board dimensions and components. If any components hang over edge then warn user.
 void calculateDesignDimensions()
@@ -404,6 +487,7 @@ void calculateDesignDimensions()
 	//Warn user if there is overhang
 	if( (overhang_xMax > xMax) || (overhang_xMin < xMin) || 
 	(overhang_yMax > yMax) || (overhang_yMin < yMin) ) {
+		overHangingParts = "true";
 		
 		if(xMin < overhang_xMin) overhang_xMin = xMin;
 		if(xMax > overhang_xMax) overhang_xMax = xMax;
@@ -415,16 +499,26 @@ void calculateDesignDimensions()
 		
 		verticalGapNeeded = overhangWidth - designWidth;
 		horizontalGapNeeded = overhangHeight - designHeight;
-
-		string warning = "";
-		sprintf(warning, "An overhanging dimension was detected. Consider increasing gaps.\nBoard dimension: %.2fx%.2f\nOverall dimension: %.2fx%.2f\n\nVertical gap needed: %.2f\nHorizontal gap needed: %.2f", designWidth, designHeight, overhangWidth, overhangHeight, verticalGapNeeded, horizontalGapNeeded);
-		dlgMessageBox(warning);
 	}
 }
 
 string get_project_path() {
     if (board)     board(B)     return(filedir(B.name));
     if (schematic) schematic(B) return(filedir(B.name));
+}
+
+//Change any / in a string to \
+//Useful for directory structure before calling a cmd
+string convertForwardToBackSlashes(string thing)
+{
+	//Convert forward slashes to back slashes so we can run system command
+	int pos = strrchr(thing, '/');
+	while (pos >= 0) 
+	{
+		thing = strsub(thing, 0, pos) + "\\\\" + strsub(thing, pos + 1, strlen(thing)); //Remove and replace
+		pos = strrchr(thing, '/'); //Look for the next forward slash
+	}
+	return(thing);
 }
 
 //Creates a sub directory to the project called \Panel to store the new panel brd file into
@@ -440,7 +534,7 @@ void createFile()
     string a[];
 	string projectDirectory = get_project_path();
     panelFileLocation = projectDirectory + "Production/" + baseFileName + "-Panel.brd";
-    int n = fileglob(a, panelFileLocation);
+	int n = fileglob(a, panelFileLocation);
 
     //Warn user we are about to overwrite a file of the same name
     if (n != 0)
@@ -451,20 +545,14 @@ void createFile()
 
         string s = "";
 		bigScript += "SET CONFIRM YES;\n";
-        sprintf(s, "REMOVE %s;\n", panelFileLocation);
+        sprintf(s, "REMOVE '%s';\n", panelFileLocation);
         bigScript += s;
         bigScript += "SET CONFIRM OFF;\n";
     }
-
-	//Convert forward slashes to back slashes so we can run system command
-	int pos = strrchr(projectDirectory, '/');
-	while (pos >= 0) 
-	{
-		projectDirectory = strsub(projectDirectory, 0, pos) + "\\\\" + strsub(projectDirectory, pos + 1, strlen(projectDirectory)); //Remove and replace
-		pos = strrchr(projectDirectory, '/'); //Look for the next forward slash
-	}
 	
-    string commandToRun = "cmd.exe /C IF NOT EXIST " + projectDirectory + "\\Production md " + projectDirectory + "\\Production"; ///K to keep window open
+	projectDirectory = convertForwardToBackSlashes(projectDirectory); //Convert forward slashes to back slashes so we can run system command
+	
+    string commandToRun = "cmd.exe /C IF NOT EXIST " + "\"" + projectDirectory + "\\Production\" md \"" + projectDirectory + "\\Production\""; // /K to keep window open
     if(system(commandToRun) != 0)
 	{
 		dlgMessageBox("Error: Command failed.", "OK");
@@ -475,22 +563,32 @@ void createFile()
 if (board)
 {
 	testFourLayer(); //Detect if there are more than 2 copper layers
-
+	testBottomParts(); //Detect if there are components on bottom side
+	
 	configRead(); //Read any settings if available
 
 	createFile(); //Create a \Panel sub directory, overwrite any existing panel files
 
 	calculateDesignDimensions(); //Detect any overhanging parts. It will set designWidth/designHeight
 	
+	int outputGerbers = 1;
+	int outputTopStencil = 1;
+	int outputBottomStencil = bottomComponents;
+	int zipOutput = 1;
+	
 	//GUI
     int dstatus = dlgDialog("Panel Generation Options"){
 
-          dlgLabel("All dimensions in inches");
-		  dlgGroup("Panel Size") {
+		dlgLabel("All dimensions in inches");
+		dlgGroup("Panel Size") {
 			dlgHBoxLayout{ dlgLabel("X:\t");       dlgRealEdit(panelSizeX, 1, 20); } 
 			dlgHBoxLayout{ dlgLabel("Y:\t");       dlgRealEdit(panelSizeY, 1, 20); } 
-		  }
-          dlgGroup("Gaps") {
+		}
+		dlgGroup("Gaps") {
+
+		if(overHangingParts == "true")
+		{
+			dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This board has overhanging parts\t"); } 
 			if(verticalGapNeeded > 0)
 			{
 				string s = "";
@@ -504,22 +602,56 @@ if (board)
 				sprintf(s, "Recommended Horizontal Gap for Overhang: %.2f", horizontalGapNeeded);
 				dlgHBoxLayout{ dlgLabel(s); } 
 			}
+		}
 
+		dlgHBoxLayout{ dlgLabel("Vertical Gap:\t");         	dlgRealEdit(verticalGap, 0.02, 2); } 
+		dlgHBoxLayout{ dlgLabel("Horizontal Gap:\t");       	dlgRealEdit(horizontalGap, 0.02, 2); } 
+		}
+		  
+		dlgGroup("Extra Production Bits") {
+			dlgHBoxLayout{ dlgCheckBox("Add Panel Borders and Fiducials", drawPanelBorders); } 
+			dlgHBoxLayout{ dlgCheckBox("Add V-score Lines and Text", vScoreIndicators); } 
+		}
 
-    	    dlgHBoxLayout{ dlgLabel("Vertical Gap:\t");         	dlgRealEdit(verticalGap, 0.02, 2); } 
-            dlgHBoxLayout{ dlgLabel("Horizontal Gap:\t");       	dlgRealEdit(horizontalGap, 0.02, 2); } 
-		  }
+		dlgHBoxLayout{ dlgLabel("\t"); } 
 
-		  dlgPushButton("Generate Panel") {
-    	    configWrite(); //Record current settings
-		    panelizer(); //Create the panel
+		if(fourLayers == 1)
+		{
+			dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This is a four layer board\t"); } 
+		}
+		if(bottomComponents == 1)
+		{
+			dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This board has parts on bottom side\t"); } 
+		}
+
+		if(fourLayers == 1 || bottomComponents == 1)
+		{
+			dlgHBoxLayout{ dlgLabel("\t"); } 
+		}
+
+		dlgGroup("Output Files") {
+			dlgHBoxLayout{ dlgCheckBox("Run CAM after panelization", runCAM); } 
+		}
+
+		dlgPushButton("Generate") {
+			configWrite(); //Record current settings
+			panelizer(); //Create the panel
 			
+			if(runCAM == 1)
+			{
+				bigScript += "RUN SparkFun-CAMmer.ulp;\n";
+			}
+
 			exit(bigScript); //Execute this generated script
 
-		    dlgAccept(-1);
-		  }           
-          dlgStretch(1);
+			dlgAccept(-1);
+		}           
+
+		dlgStretch(1);
     };
+	
+	configWrite(); //Record current settings
+	
 }
 else
 {

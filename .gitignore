@@ -19,6 +19,9 @@
 ## BOM files
 *bom*
 
+## Configure files from ULPs
+*.cfg
+
 #################
 ## Eclipse
 #################
