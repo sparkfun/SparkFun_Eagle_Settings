@@ -525,7 +525,13 @@ void calculateDesignDimensions()
             }
 		}
 	}
-
+	
+	//Check if this design has dimension lines. If it doesn't then it's probably a DXF import of an enclosure or something very weird.
+	if(xMin == 0 && yMax == 0)
+	{
+		dlgMessageBox("!This board has no dimension lines. Cannot panelize. Exiting.");
+		exit(-1);
+	}
 	
 	//See if any elements of any components hang over the edge of the board dimension wires
 	//Note this only looks at wires (silk lines, tdocu lines, etc). It doesn't check SMD pads
@@ -692,7 +698,7 @@ if (board)
 	createFile(); //Create a \Panel sub directory, overwrite any existing panel files
 
 	calculateDesignDimensions(); //Detect any overhanging parts. It will set designWidth/designHeight
-
+	
 	string boardThickness = getBoardThickness(); //Search for 0.8mm text on board
 	string boardColor = getBoardColor(); //Search board for aesthetics to determine soldermask color
 	
