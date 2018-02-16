@@ -1,5 +1,5 @@
-#usage "en: <b>Copy a given board to fill a panel just over 75x75 mm with 0.25mm gap between designs to allow for V-score trench.</b> PCBWay requires the user to create panels that are at least 75x75mm. If the panel is smaller than this they will reject it because their v-score machine can't handle it. This ULP takes a given design and replicates it until the panel is just over 75x75mm. It also adds dimension lines between copies and v-score text so that PCBWay knows where to v-score."
-"<p>Usage: run sparkx-panelizer</p>"
+#usage "en: <b>Copy a given board to fill a panel. Panel size is given by user. Add panel borders if requested. Add gaps as requested. Add V-score lines and labels as requested.</b> PCBWay requires the user to create panels that are at least 75x75mm. If the panel is smaller than this they will reject it because their v-score machine can't handle it. This ULP takes a given design and replicates it until the panel is just over the dimensions specified by the user. It also adds dimension lines between copies and v-score text so that PCBWay knows where to v-score. This script will also detect overhanging parts and warn the user that gaps are needed. Script tries to identify the soldermask color based on the logos on the board (SparkFun vs SparkX vs LilyPad). Script looks for 0.8mm tag for thin boards. Script outputs a ordering_instructions.txt file containing all the characteristics of this panel."
+"<p>Usage: run sparkfun-panelizer</p>"
 "<p>Author: <author>Nathan Seidle &lt;inathan@sparkfun.com&gt;</author><br />"
 "Version: <em>1.0</em></p>"
 
@@ -8,13 +8,10 @@
 string bigScript = ""; //The big string of commands that we will eventually run as a script
 
 /*
-add bottom stencil order
+	TODO
+	
+	Add radio button that swaps between mm and inch in GUI
 
-eagle -X- -f+ -O+ -x0 -y0 -dGERBER_RS274X -o C:\Dropbox\Projects\RedBoard\Hardware\RedBoard.brd
-eagle -X- -f+ -O+ -x0 -y0 -dGERBER_RS274X C:\Dropbox\Projects\RedBoard\Hardware\RedBoard.brd
-eagle -X- -x0 -y0 -dGERBER_RS274X C:\Dropbox\Projects\RedBoard\Hardware\RedBoard.brd
-
-eagle -X- -dGERBER_RS274X C:\Users\nathan.seidle\Dropbox\Projects\RedBoard\Hardware\RedBoard.brd
 */
 
 string configFile  = filesetext(argv[0], ".cfg");
@@ -64,23 +61,144 @@ real yMax = 0;
 real xMin = 0;
 real yMin = 0;
 
-real overhang_xMax = 0;
-real overhang_yMax = 0;
-real overhang_xMin = 0;
-real overhang_yMin = 0;
+real panelWidth = 0;
+real panelHeight = 0;
 
 string overHangingParts = "false";
 real verticalGapNeeded = 0;
 real horizontalGapNeeded = 0;
 
-int fourLayers = 0;
-int bottomComponents = 0;
-
 string panelFileLocation = "";
+
+//Finds a string in a string no matter where, no matter capitalization
+int containsString(string toSearch, string toFind)
+{
+	int pos = strstr(strlwr(toSearch), strlwr(toFind));
+	if(pos >= 0) //String found
+	{
+		return(1);
+	}
+	
+	return(0);	
+}
+
+//Detect if board has four layers
+int hasFourLayers()
+{
+	board(B) {
+		B.layers(L) {
+			if(L.used && L.number == 2)
+			{
+				return(1);
+			}
+			if(L.used && L.number == 15)
+			{
+				return(1);
+			}
+		}
+	}
+	return(0); //Nope
+}
+
+//Detect if parts are on the bottom of the board
+int hasBottomParts()
+{
+	board(B) {
+		B.elements(E) {
+			E.package.contacts(C) {
+				if (C.smd && C.smd.layer == 16) {
+					//Fiducials make it this far. We need to ignore fiducials.
+					if(containsString(E.package.name, "fiducial") == 0) //String not found, this is a legit part
+					{
+						return(1);
+					}
+				}
+			}
+		}
+	}
+
+	return(0); //Nope
+}
+
+//Detect thickness of board. 
+//If someone has put "0.8mm" in any of the text on the board then return 1.
+//If no text is found, return 0.
+//This is a bit of a hack but all thin SparkFun designs call out the thickness in the BRD file
+string getBoardThickness()
+{
+	string boardThickness = "1.6mm";
+
+	board(B) {
+		B.texts(T) {
+			if(containsString(T.value, "0.8mm") == 1)
+			{
+				return("0.8mm");
+			}
+		}
+	}
+  
+	return("1.6mm");
+}
+
+//Search through logos on board to determine if this is a SparkX board (black)
+//SparkFun board (red), LilyPad (purple) or other (green as default)
+string getBoardColor()
+{
+	int sparkxFound = 0;
+	int sparkfunFound = 0;
+	int lilypadFound = 0;
+	
+	board(B) {
+		B.elements(E) {
+
+			if(containsString(E.package.name, "SparkX") == 1) //String found
+			{
+				sparkxFound = 1;
+			}
+
+			if(containsString(E.package.name, "SparkFun") == 1 || containsString(E.package.name, "SFE") == 1) //String found
+			{
+				sparkfunFound = 1;
+			}
+			
+			if(containsString(E.package.name, "LilyPad") == 1 || containsString(E.package.library, "LilyPad") == 1) //String found
+			{
+				lilypadFound = 1;
+			}
+		}
+	}
+	
+	if(sparkxFound == 1 && sparkfunFound == 0 && lilypadFound == 0)
+	{
+		return("Black");
+	}
+	if(sparkxFound == 0 && sparkfunFound == 1 && lilypadFound == 0)
+	{
+		return("Red");
+	}
+	if(sparkxFound == 0 && sparkfunFound == 0 && lilypadFound == 1)
+	{
+		return("Purple");
+	}
+	
+	string warning = "Not sure what board color to use.";
+	if(sparkxFound == 1) warning += " SparkX found.";
+	if(sparkfunFound == 1) warning += " SparkFun found.";
+	if(lilypadFound == 1) warning += " LilyPad found.";
+	if(sparkxFound == 0 && sparkfunFound == 0 && lilypadFound == 0) warning += " No logos found.";
+	
+	warning += " Marking as unknown.";
+	
+	dlgMessageBox(warning);
+	return("Unknown");
+}
 
 void panelizer() {
 	
     string s = "";
+
+	real borderWidth = 0;
+	if(drawPanelBorders == 1) borderWidth = 0.25;
 
 	//Calculate the number of copies we need to achieve our min panel size
 	int numberOfColumns = ceil(panelSizeX / (designWidth + verticalGap));
@@ -88,6 +206,14 @@ void panelizer() {
 	
 	int numberOfRows = ceil(panelSizeY / (designHeight + horizontalGap));
 	if(numberOfRows * (designHeight + horizontalGap) + horizontalGap < panelSizeY) numberOfRows++;
+	
+	panelWidth = (designWidth + verticalGap) * numberOfColumns - verticalGap;
+	panelWidth += borderWidth * 2;
+	if(drawPanelBorders == 1) panelWidth += (verticalGap * 2);
+
+	panelHeight = (designHeight + horizontalGap) * numberOfRows - horizontalGap;
+	panelHeight += borderWidth * 2;
+	if(drawPanelBorders == 1) panelHeight += (horizontalGap * 2);
 
     //Turn off all layers but the ones we want to copy
 	//Include 2 and 15 (layers for four layer board)
@@ -209,7 +335,6 @@ void panelizer() {
 	if(drawPanelBorders == 1)
 	{
 		//Add borders to four sides
-		real borderWidth = 0.25;
 		
 		bigScript += "LAYER 20;\n"; //Dimension layer
 
@@ -281,21 +406,21 @@ void panelizer() {
 		//Upper two fiducials live on one breakaway edge
 		//Fiducials are not in center of border, they are nearer the panel so the clips don't obstruct their view
 		real fiducial_x_1 = 0 + borderWidth + verticalGap;
-		real fiducial_y_1 = panelHeight + verticalGap + (borderWidth / 4);
+		real fiducial_y_1 = panelHeight + horizontalGap + (borderWidth / 4);
 		bigScript += "LAYER 1;\n"; //Top layer
 		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%f %f);\n", fiducial_x_1, fiducial_y_1);
 		bigScript += s;
-		if(bottomComponents == 1)
+		if(hasBottomParts() == 1)
 		{
 			sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS MR0 (%f %f);\n", fiducial_x_1, fiducial_y_1);
 			bigScript += s;
 		}
 		
 		real fiducial_x_2 = panelWidth - borderWidth - verticalGap;
-		real fiducial_y_2 = panelHeight + verticalGap + (borderWidth / 4);
+		real fiducial_y_2 = panelHeight + horizontalGap + (borderWidth / 4);
 		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%f %f);\n", fiducial_x_2, fiducial_y_2);
 		bigScript += s;
-		if(bottomComponents == 1)
+		if(hasBottomParts() == 1)
 		{
 			sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS MR0 (%f %f);\n", fiducial_x_2, fiducial_y_2);
 			bigScript += s;
@@ -306,7 +431,7 @@ void panelizer() {
 		real fiducial_y_3 = 0 - horizontalGap - (borderWidth / 4);
 		sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED (%f %f);\n", fiducial_x_3, fiducial_y_3);
 		bigScript += s;
-		if(bottomComponents == 1)
+		if(hasBottomParts() == 1)
 		{
 			sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED MR0 (%f %f);\n", fiducial_x_3, fiducial_y_3);
 			bigScript += s;
@@ -316,7 +441,7 @@ void panelizer() {
 	}
 
 	//Load the appropriate DRC
-	if(fourLayers == 0)
+	if(hasFourLayers() == 0)
 	{
 		bigScript += "DRC LOAD SparkFun-2-layer-PCBWay-LIMIT.dru;\n";
 	}
@@ -333,42 +458,6 @@ void panelizer() {
     bigScript += "WRITE;\n";
     bigScript += "SET CONFIRM OFF;\n";
 }
-
-//Detect if board has four layers
-void testFourLayer()
-{
-	fourLayers = 0;
-	
-	board(B) {
-		B.layers(L) {
-			if(L.used && L.number == 2)
-			{
-				fourLayers = 1;
-			}
-			if(L.used && L.number == 15)
-			{
-				fourLayers = 1;
-			}
-		}
-	}
-}
-
-//Detect if parts are on the bottom of the board
-void testBottomParts()
-{
-	bottomComponents = 0;
-	
-	board(B) {
-		B.elements(E) {
-			E.package.contacts(C) {
-				if (C.smd && C.smd.layer == 16) {
-					bottomComponents = 1;
-				}
-			}
-		}
-	}
-}
-
 
 //Look at board dimensions and components. If any components hang over edge then warn user.
 void calculateDesignDimensions()
@@ -430,10 +519,10 @@ void calculateDesignDimensions()
 	//See if any elements of any components hang over the edge of the board dimension wires
 	//Note this only looks at wires (silk lines, tdocu lines, etc). It doesn't check SMD pads
 	//For example, see RedBoard: the SMD ISP header hangs over. This doesn't catch it.
-	overhang_xMax = xMax;
-	overhang_xMin = xMin;
-	overhang_yMax = yMax;
-	overhang_yMin = yMin;
+	real overhang_xMax = xMax;
+	real overhang_xMin = xMin;
+	real overhang_yMax = yMax;
+	real overhang_yMin = yMin;
 	board(B) {
 		B.elements(E) {
 			E.package.wires(C) {
@@ -560,21 +649,41 @@ void createFile()
 
 }
 
+//Record board thickness, soldermask color, silkscreen color, oz copper, and plating to a text file
+void orderingInstructionsWrite(string boardThickness, string boardColor)
+{
+	string orderingFile = get_project_path() + "Production/ordering_instructions.txt";
+	
+	//Convert panel dimensions to mm
+	panelHeight *= 25.4;
+	panelWidth *= 25.4;
+	
+	int numberOfLayers = 2;
+	if(hasFourLayers() == 1) numberOfLayers = 4;
+	
+	output(orderingFile){
+		printf("panel size, %.0fx%.0fmm\n", ceil(panelWidth), ceil(panelHeight));
+		printf("PCB thickness, %s\n", boardThickness);
+		printf("number of layers, %d\n", numberOfLayers);
+		printf("soldermask color, %s\n", boardColor);
+		printf("silkscreen color, %s\n", "white");
+		printf("oz copper, %s\n", "1oz");
+		printf("finish, %s\n", "HASL lead free");
+	}
+	
+}
+
+
 if (board)
 {
-	testFourLayer(); //Detect if there are more than 2 copper layers
-	testBottomParts(); //Detect if there are components on bottom side
-	
 	configRead(); //Read any settings if available
 
 	createFile(); //Create a \Panel sub directory, overwrite any existing panel files
 
 	calculateDesignDimensions(); //Detect any overhanging parts. It will set designWidth/designHeight
-	
-	int outputGerbers = 1;
-	int outputTopStencil = 1;
-	int outputBottomStencil = bottomComponents;
-	int zipOutput = 1;
+
+	string boardThickness = getBoardThickness(); //Search for 0.8mm text on board
+	string boardColor = getBoardColor(); //Search board for aesthetics to determine soldermask color
 	
 	//GUI
     int dstatus = dlgDialog("Panel Generation Options"){
@@ -615,16 +724,16 @@ if (board)
 
 		dlgHBoxLayout{ dlgLabel("\t"); } 
 
-		if(fourLayers == 1)
+		if(hasFourLayers() == 1)
 		{
 			dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This is a four layer board\t"); } 
 		}
-		if(bottomComponents == 1)
+		if(hasBottomParts() == 1)
 		{
 			dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This board has parts on bottom side\t"); } 
 		}
 
-		if(fourLayers == 1 || bottomComponents == 1)
+		if(hasFourLayers() == 1 || hasBottomParts() == 1)
 		{
 			dlgHBoxLayout{ dlgLabel("\t"); } 
 		}
@@ -635,7 +744,10 @@ if (board)
 
 		dlgPushButton("Generate") {
 			configWrite(); //Record current settings
+			
 			panelizer(); //Create the panel
+
+			orderingInstructionsWrite(boardThickness, boardColor); //Record board characteristics
 			
 			if(runCAM == 1)
 			{

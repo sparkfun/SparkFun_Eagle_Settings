@@ -1,5 +1,5 @@
-#usage "en: <b>Copy a given board to fill a panel just over 75x75 mm with 0.25mm gap between designs to allow for V-score trench.</b> PCBWay requires the user to create panels that are at least 75x75mm. If the panel is smaller than this they will reject it because their v-score machine can't handle it. This ULP takes a given design and replicates it until the panel is just over 75x75mm. It also adds dimension lines between copies and v-score text so that PCBWay knows where to v-score."
-"<p>Usage: run sparkx-panelizer</p>"
+#usage "en: <b>Output Gerbers of a given board.</b> This script looks at how many layers, if there are bottom components, etc and outputs the necessary Gerber files. It will also zip them together if user requests it."
+"<p>Usage: run sparkfun-cammer</p>"
 "<p>Author: <author>Nathan Seidle &lt;inathan@sparkfun.com&gt;</author><br />"
 "Version: <em>1.0</em></p>"
 
@@ -76,12 +76,17 @@ int hasBottomParts()
 		B.elements(E) {
 			E.package.contacts(C) {
 				if (C.smd && C.smd.layer == 16) {
-					return(1); //Found it!
+					//Fiducials make it this far. We need to ignore fiducials.
+					int pos = strstr(strlwr(E.package.name), "fiducial");
+					if(pos < 0) //String not found
+					{
+						return(1); //Found it!
+					}
 				}
 			}
 		}
 	}
-	
+
 	return(0); //Nope
 }
 
