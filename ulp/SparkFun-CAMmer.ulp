@@ -311,10 +311,14 @@ if (board)
 		}
 		if(hasBottomParts() == 1)
 		{
-			
 			dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This board has parts on bottom side\t");  } 
 			outputBottomStencil = 1; //Persuade user to generate these gerbers
 		}
+		else
+		{
+			dlgHBoxLayout{ dlgLabel("This board does not have parts on bottom side\t");  } 
+			outputBottomStencil = 0;
+		}			
 
    	    dlgHBoxLayout{ dlgLabel("\t"); } 
 

@@ -147,6 +147,7 @@ string getBoardColor()
 	int sparkxFound = 0;
 	int sparkfunFound = 0;
 	int lilypadFound = 0;
+	int spectacleFound = 0;
 	
 	board(B) {
 		B.elements(E) {
@@ -160,6 +161,11 @@ string getBoardColor()
 			{
 				sparkfunFound = 1;
 			}
+
+			if(containsString(E.package.name, "Spectacle") == 1) //String found
+			{
+				spectacleFound = 1;
+			}
 			
 			if(containsString(E.package.name, "LilyPad") == 1 || containsString(E.package.library, "LilyPad") == 1) //String found
 			{
@@ -168,24 +174,29 @@ string getBoardColor()
 		}
 	}
 	
-	if(sparkxFound == 1 && sparkfunFound == 0 && lilypadFound == 0)
+	if(sparkxFound == 1 && sparkfunFound == 0 && lilypadFound == 0 && spectacleFound == 0)
 	{
 		return("Black");
 	}
-	if(sparkxFound == 0 && sparkfunFound == 1 && lilypadFound == 0)
+	if(sparkxFound == 0 && sparkfunFound == 1 && lilypadFound == 0 && spectacleFound == 0)
 	{
 		return("Red");
 	}
-	if(sparkxFound == 0 && sparkfunFound == 0 && lilypadFound == 1)
+	if(sparkxFound == 0 && sparkfunFound == 0 && lilypadFound == 1 && spectacleFound == 0)
 	{
 		return("Purple");
+	}
+	if(sparkxFound == 0 && sparkfunFound == 1 && lilypadFound == 0 && spectacleFound == 1)
+	{
+		return("Black");
 	}
 	
 	string warning = "Not sure what board color to use.";
 	if(sparkxFound == 1) warning += " SparkX found.";
 	if(sparkfunFound == 1) warning += " SparkFun found.";
 	if(lilypadFound == 1) warning += " LilyPad found.";
-	if(sparkxFound == 0 && sparkfunFound == 0 && lilypadFound == 0) warning += " No logos found.";
+	if(spectacleFound == 1) warning += " Spectacle found.";
+	if(sparkxFound == 0 && sparkfunFound == 0 && lilypadFound == 0 && spectacleFound == 0) warning += " No logos found.";
 	
 	warning += " Marking as unknown.";
 	
