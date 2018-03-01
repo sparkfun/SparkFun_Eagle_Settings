@@ -100,13 +100,13 @@ int hasFourLayers()
 	return(0); //Nope
 }
 
-//Detect if parts are on the bottom of the board
-int hasBottomParts()
+//Detect if parts are on a given layer of the board
+int hasPartsOnLayer(int layerNumber)
 {
 	board(B) {
 		B.elements(E) {
 			E.package.contacts(C) {
-				if (C.smd && C.smd.layer == 16) {
+				if (C.smd && C.smd.layer == layerNumber) {
 					//Fiducials make it this far. We need to ignore fiducials.
 					if(containsString(E.package.name, "fiducial") == 0) //String not found, this is a legit part
 					{
@@ -118,6 +118,18 @@ int hasBottomParts()
 	}
 
 	return(0); //Nope
+}
+
+//Detect if parts are on the top of the board
+int hasTopParts()
+{
+	return(hasPartsOnLayer(1));
+}
+
+//Detect if parts are on the bottom of the board
+int hasBottomParts()
+{
+	return(hasPartsOnLayer(16));
 }
 
 //Detect thickness of board. 
@@ -309,36 +321,54 @@ void panelizer() {
 		bigScript += "LAYER 20;\n"; //Dimension layer
 		
 		//Add vertical lines
-		for(int column = 1 ; column < numberOfColumns ; column++)
+		int column = 1;
+		int linesToDraw = numberOfColumns;
+		if(drawPanelBorders == 1)
+		{
+			column = 0;
+			linesToDraw++;
+		}
+		for( ; column < linesToDraw ; column++)
 		{
 			xCoord = ((designWidth + (verticalGap / 2)) * column) + ((column-1) * (verticalGap / 2));
 
 			real yCoordLow = 0;
+			yCoordLow -= borderWidth; //Extend past the frame if it exists
 
 			real yCoordHigh = (numberOfRows * designHeight) + (numberOfRows * horizontalGap) + 0.25;
+			yCoordHigh += borderWidth; //Extend past the frame if exists
 
 			sprintf(s, "WIRE (%f %f) (%f %f);\n", xCoord, yCoordLow, xCoord, yCoordHigh);
 			bigScript += s;
 
 			//Add the word 'v-score' lines
-			sprintf(s, "TEXT v-score (%f %f);\n", xCoord, yCoordHigh  + 0.09);
+			sprintf(s, "CHANGE ALIGN CENTER; TEXT v-score (%f %f);\n", xCoord, yCoordHigh  + 0.09);
 			bigScript += s;
 		}
 
 		//Add horizontal lines
-		for(row = 1 ; row < numberOfRows ; row++)
+		int row = 1;
+		linesToDraw = numberOfRows;
+		if(drawPanelBorders == 1)
+		{
+			row = 0;
+			linesToDraw++;
+		}
+		for( ; row < linesToDraw ; row++)
 		{
 			yCoord = ((designHeight + (horizontalGap / 2)) * row) + ((row-1) * (horizontalGap / 2));
 
 			real xCoordLow = 0;
+			xCoordLow -= borderWidth; //Extend past the frame if it exists
 
 			real xCoordHigh = (numberOfColumns * designWidth) + (numberOfColumns * verticalGap) + 0.25;
+			xCoordHigh += borderWidth; //Extend past the frame if exists
 
 			sprintf(s, "WIRE (%f %f) (%f %f);\n", xCoordLow, yCoord, xCoordHigh, yCoord);
 			bigScript += s;
 
 			//Add the word 'v-score' lines
-			sprintf(s, "TEXT v-score (%f %f);\n", xCoordHigh + 0.3, yCoord);
+			sprintf(s, "CHANGE ALIGN CENTER; TEXT v-score (%f %f);\n", xCoordHigh + 0.3, yCoord);
 			bigScript += s;
 		}
 	}
@@ -678,6 +708,11 @@ void orderingInstructionsWrite(string boardThickness, string boardColor)
 	int numberOfLayers = 2;
 	if(hasFourLayers() == 1) numberOfLayers = 4;
 	
+	string stencilsRequired = "none";
+	if(hasTopParts() && hasBottomParts()) stencilsRequired = "top+bottom";
+	else if(hasTopParts()) stencilsRequired = "top";
+	else if(hasBottomParts()) stencilsRequired = "bottom";
+	
 	output(orderingFile){
 		printf("panel size, %.0fx%.0fmm\n", ceil(panelWidth), ceil(panelHeight));
 		printf("PCB thickness, %s\n", boardThickness);
@@ -686,6 +721,7 @@ void orderingInstructionsWrite(string boardThickness, string boardColor)
 		printf("silkscreen color, %s\n", "white");
 		printf("oz copper, %s\n", "1oz");
 		printf("finish, %s\n", "HASL lead free");
+		printf("stencils, %s\n", stencilsRequired);
 	}
 	
 }
