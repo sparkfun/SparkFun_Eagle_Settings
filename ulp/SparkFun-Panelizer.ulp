@@ -108,8 +108,9 @@ int hasPartsOnLayer(int layerNumber)
 			E.package.contacts(C) {
 				if (C.smd && C.smd.layer == layerNumber) {
 					
-					//Fiducials make it this far. We need to ignore fiducials.
-					if(containsString(E.package.name, "fiducial") == 0 && containsString(E.package.name, "NC_TRACE") == 0) 
+					//Ignore:
+					//Fiducials, jumpers with traces as closure method					
+					if(containsString(E.package.name, "fiducial") == 0 && containsString(E.package.name, "NC_TRACE") == 0 && containsString(E.package.name, "NC_BY_TRACE") == 0) 
 					{
 						//String not found, this is a legit part
 						return(1);
