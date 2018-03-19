@@ -17,7 +17,7 @@
 *.bak
 
 ## BOM files
-*bom*
+#*bom*
 
 ## Configure files from ULPs
 *.cfg

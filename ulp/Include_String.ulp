@@ -1,0 +1,171 @@
+/* WILDCARD */
+string STRING_WILDCARD_STR = "%%";
+
+string stringFTrim(string str)
+{
+	string str2;
+	int trimmed = 0;
+
+	for(int i = 0; str[i]; i++)
+	{
+		if(trimmed)
+		{
+			str2 += str[i];
+		}
+		else if(str[i] != ' ' && str[i] != '\n' && str[i] != '\t')
+		{
+			trimmed = 1;
+			str2 += str[i];
+		}
+	}
+
+	return str2;
+}
+
+string stringLTrim(string str)
+{
+	string str2;
+	int trimmed = 0;
+
+	for(int i = strlen(str)-1; i >= 0; i--)
+	{
+		if(trimmed)
+		{
+			sprintf(str2, "%c%s", str[i], str2);
+		}
+		else if(str[i] != ' ' && str[i] != '\n' && str[i] != '\t')
+		{
+			trimmed = 1;
+			sprintf(str2, "%c%s", str[i], str2);
+		}
+	}
+
+	return str2;
+}
+
+string stringTrim(string str)
+{
+	return stringLTrim(stringFTrim(str));
+}
+
+string stringReplace(string str, string search, string replace)
+{
+	int offset = 0;
+	while(strstr(str, search, offset) != -1)
+	{
+		int start = strstr(str, search, offset);
+		int end = start + strlen(search);
+		string str1 = strsub(str, 0, start);
+		string str2 = strsub(str, end);
+		
+		offset = strlen(str1) + strlen(replace);
+
+		str = str1 + replace + str2;
+	}
+
+	return str;
+}
+
+string stringConvertDotToComma(string str)
+{
+	return str; //stringReplace(str, ".", ",");
+}
+
+// EAGLE ADDS A ":" to sprintf's real value, why?
+string stringFromReal(real value)
+{
+	string tmp;
+	sprintf(tmp, "%e", value);
+	
+	if(strchr(tmp, ':') != -1)
+	{
+		tmp[strchr(tmp, ':')] = '0';
+	}
+
+	return tmp;
+}
+
+
+int stringAdvancedMatch(string needle, string haystack)
+{
+	string search[];
+	int index = 0;
+
+	int count = strsplit(search, needle, '*');
+
+	if(stringTrim(haystack) == "" && needle != "")
+	{
+		return 0;
+	}
+
+	for(int i = 0; i < count; i++)
+	{
+		if(search[i] != "" && (index = strstr(haystack, search[i], index)) == -1)
+		{
+			return 0;
+		}
+	}
+	
+	return 1;
+}
+
+/* Parameters look like: grid 5 mm, outline 5 x 5 mm */
+string stringParameterValue(string parameter, string haystack)
+{
+	string data = "";
+
+	int start = strstr(haystack, parameter, 0);
+	int len = strlen(parameter) + 1;
+	int end = 0;
+
+	if(start != -1)
+	{
+		end = strstr(haystack, ",", start);
+		end = end==-1?strlen(haystack):end;
+
+		data = strsub(haystack, start + len , end-(start+len));
+	}
+
+	return stringTrim(data);
+}
+
+int stringParameterPresent(string parameter, string haystack)
+{
+	return (strstr(haystack, parameter, 0) != -1)?1:0;
+}
+
+
+string stringWildcardGetNext(string wildcarded)
+{
+	int start = strstr(wildcarded, STRING_WILDCARD_STR);
+	int end = strstr(wildcarded, STRING_WILDCARD_STR, start+1);
+
+	return strsub(wildcarded, start+2, end-start-2);
+}
+
+string stringWildcardReplace(string wildcarded, string wildcard, string replacement)
+{
+	int start = strstr(wildcarded, STRING_WILDCARD_STR + wildcard + STRING_WILDCARD_STR, 0);
+	int end = start + strlen(STRING_WILDCARD_STR + wildcard + STRING_WILDCARD_STR);
+	string str1 = strsub(wildcarded, 0, start);
+	string str2 = strsub(wildcarded, end);
+
+	return str1 + replacement + str2;
+}
+
+int stringCompare(string s1, string s2)
+{
+	for(int i = 0; i  < strlen(s1) && i < strlen(s2); i++)
+	{
+		if(s1[i] > s2[i]) { return 1;}
+		else if(s1[i] < s2[i]) { return -1;}
+	}
+
+	return 0;
+}
+
+string itoa(int num){
+	string tmp;
+	sprintf(tmp, "%d", num);
+	return tmp;
+}
