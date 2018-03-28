@@ -24,6 +24,8 @@ real		panelSizeY			= 2.0;
 int		vScoreIndicators	= 0;
 int		drawPanelBorders 	= 0;
 int 		runCAM					= 0;
+int 		generateTopStencil = 0;
+int 		generateBottomStencil = 0;
 
 void configWrite(){
   output(configFile){
@@ -34,6 +36,8 @@ void configWrite(){
     printf("%d\n", vScoreIndicators);
     printf("%d\n", drawPanelBorders);
     printf("%d\n", runCAM);
+	printf("%d\n", generateTopStencil);
+	printf("%d\n", generateBottomStencil);
   }
 }
 
@@ -49,6 +53,8 @@ void configRead() {
       vScoreIndicators		= strtol(data[4]);
       drawPanelBorders	= strtol(data[5]);
       runCAM					= strtol(data[6]);
+      generateTopStencil	= strtol(data[7]);
+      generateBottomStencil	= strtol(data[8]);
     }
   }
 }
@@ -145,12 +151,12 @@ int hasBottomParts()
 
 //Detect thickness of board. 
 //If someone has put "0.8mm" in any of the text on the board then return 1.
-//If no text is found, return 0.
 //This is a bit of a hack but all thin SparkFun designs call out the thickness in the BRD file
 string getBoardThickness()
 {
 	string boardThickness = "1.6mm";
 
+	//Search the ordering instructions box
 	board(B) {
 		B.texts(T) {
 			if(containsString(T.value, "0.8mm") == 1)
@@ -171,6 +177,28 @@ string getBoardColor()
 	int sparkfunFound = 0;
 	int lilypadFound = 0;
 	int spectacleFound = 0;
+	int microBitFound = 0;
+
+	//Search the ordering instructions box
+	board(B) {
+		B.texts(T) {
+			if(containsString(T.value, "Solder Mask") == 1)
+			{
+				if(containsString(T.value, "Matte Black") == 1)
+				{
+					return("Matte Black");
+				}
+				if(containsString(T.value, "Black") == 1)
+				{
+					return("Black");
+				}
+				if(containsString(T.value, "Purple") == 1)
+				{
+					return("Purple");
+				}
+			}
+		}
+	}
 	
 	board(B) {
 		B.elements(E) {
@@ -344,7 +372,7 @@ void panelizer() {
 			xCoord = ((designWidth + (verticalGap / 2)) * column) + ((column-1) * (verticalGap / 2));
 
 			real yCoordLow = 0;
-			yCoordLow -= (borderWidth * 2); //Extend past the frame if it exists
+			yCoordLow -= (borderWidth + horizontalGap);
 
 			real yCoordHigh = (numberOfRows * designHeight) + (numberOfRows * horizontalGap) + 0.25;
 			yCoordHigh += borderWidth; //Extend past the frame if exists
@@ -370,7 +398,7 @@ void panelizer() {
 			yCoord = ((designHeight + (horizontalGap / 2)) * row) + ((row-1) * (horizontalGap / 2));
 
 			real xCoordLow = 0;
-			xCoordLow -= (borderWidth * 2); //Extend past the frame if it exists
+			xCoordLow -= (borderWidth + verticalGap);
 
 			real xCoordHigh = (numberOfColumns * designWidth) + (numberOfColumns * verticalGap) + 0.25;
 			xCoordHigh += borderWidth; //Extend past the frame if exists
@@ -720,9 +748,12 @@ void orderingInstructionsWrite()
 	if(hasFourLayers() == 1) numberOfLayers = 4;
 	
 	string stencilsRequired = "none";
-	if(hasTopParts() && hasBottomParts()) stencilsRequired = "top+bottom";
-	else if(hasTopParts()) stencilsRequired = "top";
-	else if(hasBottomParts()) stencilsRequired = "bottom";
+	//if(hasTopParts() && hasBottomParts()) stencilsRequired = "top+bottom";
+	//else if(hasTopParts()) stencilsRequired = "top";
+	//else if(hasBottomParts()) stencilsRequired = "bottom";
+	if(generateTopStencil && generateBottomStencil) stencilsRequired = "top+bottom";
+	else if(generateTopStencil) stencilsRequired = "top";
+	else if(generateBottomStencil) stencilsRequired = "bottom";
 
 	string boardThickness = getBoardThickness(); //Search for 0.8mm text on board
 	string boardColor = getBoardColor(); //Search board for aesthetics to determine soldermask color
@@ -792,21 +823,24 @@ if (board)
 			dlgHBoxLayout{ dlgCheckBox("Add V-score Lines and Text", vScoreIndicators); } 
 		}
 
-		dlgHBoxLayout{ dlgLabel("\t"); } 
+		dlgGroup("Stencil Generation") {
+			if(hasBottomParts() == 1)
+			{
+				dlgHBoxLayout{ 
+					dlgLabel("<font color=red>Note:</font> This board has parts on bottom side: <br>" + bottomPackages); 
+				} 
+			}
+			
+			dlgHBoxLayout{ dlgCheckBox("Top Stencil", generateTopStencil); } 
+			if(hasBottomParts() == 1)
+			{
+				dlgHBoxLayout{ dlgCheckBox("Bottom Stencil", generateBottomStencil); } 
+			}
+		}
 
 		if(hasFourLayers() == 1)
 		{
 			dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This is a four layer board\t"); } 
-		}
-		if(hasBottomParts() == 1)
-		{
-			dlgHBoxLayout{ 
-				dlgLabel("<font color=red>Note:</font> This board has parts on bottom side: <br>" + bottomPackages); 
-			} 
-		}
-
-		if(hasFourLayers() == 1 || hasBottomParts() == 1)
-		{
 			dlgHBoxLayout{ dlgLabel("\t"); } 
 		}
 
