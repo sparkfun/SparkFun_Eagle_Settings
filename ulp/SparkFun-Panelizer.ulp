@@ -357,58 +357,68 @@ void panelizer() {
 	//Draw v-score lines between copies
 	if(vScoreIndicators == 1)
 	{
-		bigScript += "LAYER 20;\n"; //Dimension layer
+		bigScript += "LAYER 46;\n"; //Milling layer
+		//We avoid drawing on the dimension layer because the Eagle to Charm conversion checks the board size
+		//based on dimension artifacts
 		
-		//Add vertical lines
-		int column = 1;
-		int linesToDraw = numberOfColumns;
-		if(drawPanelBorders == 1)
+		//If the vertical gap is large enough for route outs don't draw v-score lines/text
+		if(verticalGap < 0.05)
 		{
-			column = 0;
-			linesToDraw++;
+			//Add vertical lines
+			int column = 1;
+			int linesToDraw = numberOfColumns;
+			if(drawPanelBorders == 1)
+			{
+				column = 0;
+				linesToDraw++;
+			}
+			for( ; column < linesToDraw ; column++)
+			{
+				xCoord = ((designWidth + (verticalGap / 2)) * column) + ((column-1) * (verticalGap / 2));
+
+				real yCoordLow = 0;
+				yCoordLow -= (borderWidth + horizontalGap);
+
+				real yCoordHigh = (numberOfRows * designHeight) + (numberOfRows * horizontalGap) + 0.25;
+				yCoordHigh += borderWidth; //Extend past the frame if exists
+
+				sprintf(s, "WIRE 0.015 (%f %f) (%f %f);\n", xCoord, yCoordLow, xCoord, yCoordHigh);
+				bigScript += s;
+
+				//Add the word 'v-score' lines
+				sprintf(s, "CHANGE ALIGN CENTER; TEXT v-score (%f %f);\n", xCoord, yCoordHigh  + 0.09);
+				bigScript += s;
+			}
 		}
-		for( ; column < linesToDraw ; column++)
+
+		//If the vertical gap is large enough for route outs don't draw v-score lines/text
+		if(horizontalGap < 0.05)
 		{
-			xCoord = ((designWidth + (verticalGap / 2)) * column) + ((column-1) * (verticalGap / 2));
+			//Add horizontal lines
+			int row = 1;
+			int linesToDraw = numberOfRows;
+			if(drawPanelBorders == 1)
+			{
+				row = 0;
+				linesToDraw++;
+			}
+			for( ; row < linesToDraw ; row++)
+			{
+				yCoord = ((designHeight + (horizontalGap / 2)) * row) + ((row-1) * (horizontalGap / 2));
 
-			real yCoordLow = 0;
-			yCoordLow -= (borderWidth + horizontalGap);
+				real xCoordLow = 0;
+				xCoordLow -= (borderWidth + verticalGap);
 
-			real yCoordHigh = (numberOfRows * designHeight) + (numberOfRows * horizontalGap) + 0.25;
-			yCoordHigh += borderWidth; //Extend past the frame if exists
+				real xCoordHigh = (numberOfColumns * designWidth) + (numberOfColumns * verticalGap) + 0.25;
+				xCoordHigh += borderWidth; //Extend past the frame if exists
 
-			sprintf(s, "WIRE 0.015 (%f %f) (%f %f);\n", xCoord, yCoordLow, xCoord, yCoordHigh);
-			bigScript += s;
+				sprintf(s, "WIRE 0.015 (%f %f) (%f %f);\n", xCoordLow, yCoord, xCoordHigh, yCoord);
+				bigScript += s;
 
-			//Add the word 'v-score' lines
-			sprintf(s, "CHANGE ALIGN CENTER; TEXT v-score (%f %f);\n", xCoord, yCoordHigh  + 0.09);
-			bigScript += s;
-		}
-
-		//Add horizontal lines
-		int row = 1;
-		linesToDraw = numberOfRows;
-		if(drawPanelBorders == 1)
-		{
-			row = 0;
-			linesToDraw++;
-		}
-		for( ; row < linesToDraw ; row++)
-		{
-			yCoord = ((designHeight + (horizontalGap / 2)) * row) + ((row-1) * (horizontalGap / 2));
-
-			real xCoordLow = 0;
-			xCoordLow -= (borderWidth + verticalGap);
-
-			real xCoordHigh = (numberOfColumns * designWidth) + (numberOfColumns * verticalGap) + 0.25;
-			xCoordHigh += borderWidth; //Extend past the frame if exists
-
-			sprintf(s, "WIRE 0.015 (%f %f) (%f %f);\n", xCoordLow, yCoord, xCoordHigh, yCoord);
-			bigScript += s;
-
-			//Add the word 'v-score' lines
-			sprintf(s, "CHANGE ALIGN CENTER; TEXT v-score (%f %f);\n", xCoordHigh + 0.3, yCoord);
-			bigScript += s;
+				//Add the word 'v-score' lines
+				sprintf(s, "CHANGE ALIGN CENTER; TEXT v-score (%f %f);\n", xCoordHigh + 0.3, yCoord);
+				bigScript += s;
+			}
 		}
 	}
 	

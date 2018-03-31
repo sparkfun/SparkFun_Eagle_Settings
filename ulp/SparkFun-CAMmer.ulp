@@ -210,7 +210,7 @@ void createGerbers()
 		{
 			if(outputGerbers == 0) continue;
 			fileExtension = "GKO";
-			layerNumbers = "20";
+			layerNumbers = "20 46"; //Turn on dimension and milling (contains v-score indicators) layers
 			commandToRun += " & echo Running Board Outline";
 		}
 		else if(x == 7) //Top paste
