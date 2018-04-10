@@ -122,6 +122,7 @@ int hasBottomParts()
 {
 	return(hasPartsOnLayer(16));
 }
+
 string get_project_path() {
     if (board)     board(B)     return(filedir(B.name));
     if (schematic) schematic(B) return(filedir(B.name));
@@ -153,9 +154,16 @@ void createGerbers()
 	//Convert forward slashes to back slashes so we can run system commands
 	string projectDirectory = convertForwardToBackSlashes(get_project_path());
 	
-	string commandToRun = "cmd.exe /C echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
+	/tring commandToRun = "cmd.exe /C echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
 	//string commandToRun = "cmd.exe /K echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
 	string s = "";
+	
+	//We should remove all existing gerber files. There's a chance that a previous ULP job creates files that should not be zipped.
+	//sprintf(s, "del %s",
+	//		projectDirectory + baseFileName + ".GBP"
+	//);
+	//dlgMessageBox(s);
+	//commandToRun += " & " + s;
 	
 	//Generate Gerbers
 	string fileExtension = "";
@@ -273,7 +281,7 @@ void createGerbers()
 		commandToRun += " & " + s;
 	}
 	
-	//Zip files using 7za (7za.exe should be located in same directory as ULP
+	//Zip files using 7za (7za.exe should be located in same directory as ULP)
 	if(zipOutput == 1)
 	{
 		string sevenZaLocation = convertForwardToBackSlashes(filedir(argv[0]));
@@ -318,7 +326,7 @@ void createGerbers()
 		
 		commandToRun += " & " + s;
 	}
-
+	
 	//dlgMessageBox(commandToRun);
 	if(system(commandToRun) != 0)
 	{

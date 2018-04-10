@@ -329,13 +329,13 @@ void panelizer() {
 			if(verticalGap > 0.05)
 			{
 				bigScript += "LAYER 20;\n"; //Dimension layer
-				sprintf(s, "CHANGE ALIGN CENTER; TEXT 'Route Out' R90 (%f %f);\n", xCoord - (verticalGap/2), yCoord + (designHeight/2));
+				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' R90 (%f %f);\n", xCoord - (verticalGap/2), yCoord + (designHeight/2));
 				bigScript += s;
 
 				if(column == numberOfColumns - 1) //Add last text
 				{
 					bigScript += "LAYER 20;\n"; //Dimension layer
-					sprintf(s, "CHANGE ALIGN CENTER; TEXT 'Route Out' R90 (%f %f);\n", xCoord + (verticalGap/2) + designWidth, yCoord + (designHeight/2));
+					sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' R90 (%f %f);\n", xCoord + (verticalGap/2) + designWidth, yCoord + (designHeight/2));
 					bigScript += s;
 				}
 			}
@@ -343,13 +343,13 @@ void panelizer() {
 			if(horizontalGap > 0.05)
 			{
 				bigScript += "LAYER 20;\n"; //Dimension layer
-				sprintf(s, "CHANGE ALIGN CENTER; TEXT 'Route Out' (%f %f);\n", xCoord + (designWidth/2), yCoord - (horizontalGap/2));
+				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' (%f %f);\n", xCoord + (designWidth/2), yCoord - (horizontalGap/2));
 				bigScript += s;
 				
 				if(row == numberOfRows - 1) //Add last text
 				{
 					bigScript += "LAYER 20;\n"; //Dimension layer
-					sprintf(s, "CHANGE ALIGN CENTER; TEXT 'Route Out' (%f %f);\n", xCoord + (designWidth/2), yCoord + (horizontalGap/2) + designHeight);
+					sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' (%f %f);\n", xCoord + (designWidth/2), yCoord + (horizontalGap/2) + designHeight);
 					bigScript += s;
 				}
 			}
@@ -388,7 +388,7 @@ void panelizer() {
 				bigScript += s;
 
 				//Add the word 'v-score' lines
-				sprintf(s, "CHANGE ALIGN CENTER; TEXT v-score (%f %f);\n", xCoord, yCoordHigh  + 0.09);
+				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT v-score (%f %f);\n", xCoord, yCoordHigh  + 0.09);
 				bigScript += s;
 			}
 		}
@@ -418,7 +418,7 @@ void panelizer() {
 				bigScript += s;
 
 				//Add the word 'v-score' lines
-				sprintf(s, "CHANGE ALIGN CENTER; TEXT v-score (%f %f);\n", xCoordHigh + 0.3, yCoord);
+				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15;  TEXT v-score (%f %f);\n", xCoordHigh + 0.3, yCoord);
 				bigScript += s;
 			}
 		}
