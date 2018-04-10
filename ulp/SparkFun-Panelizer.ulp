@@ -279,7 +279,9 @@ void panelizer() {
 
     //Turn off all layers but the ones we want to copy
 	//Include 2 and 15 (layers for four layer board)
-    bigScript += "DISPLAY NONE; DISPLAY 1 2 15 16 17 18 20 21 22 23 24 45; DISPLAY -25 -26 -27 -28 -51;\n";
+	//Include mill layer
+	//Exclude tDocu
+    bigScript += "DISPLAY NONE; DISPLAY 1 2 15 16 17 18 20 21 22 23 24 45 46; DISPLAY -25 -26 -27 -28 -51;\n";
 
     //Draw a box slightly larger that the dimensions of the board
 	real lowerX = xMin - copyOversizeAmount;
@@ -306,7 +308,7 @@ void panelizer() {
 	bigScript += "GRID INCH 0.05 ON;GRID ALT INCH 0.005;\n";
 
 	//Turn on layers
-    bigScript += "DISPLAY NONE; DISPLAY 1 2 15 16 17 18 20 21 22 23 24 45 51; DISPLAY -25 -26 -27 -28;\n";
+    bigScript += "DISPLAY NONE; DISPLAY 1 2 15 16 17 18 20 21 22 23 24 45 46 51; DISPLAY -25 -26 -27 -28;\n";
 
 	//Paste the copies to fill the panel
 	real xCoord = 0;

@@ -235,6 +235,6 @@ if (schematic) {
 	};
 
 } else {
-	dlgMessageBox("Please run this ULP from the board.");
+	dlgMessageBox("Please run this ULP from the schematic.");
 	exit(1);
 }
