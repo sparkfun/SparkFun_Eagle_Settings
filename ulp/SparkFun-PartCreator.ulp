@@ -1,0 +1,1058 @@
+/*
+	This ULP parametrically creates footprints.
+
+	Beware: This thing will shoot you in the foot and generate a very real, very wrong footprint.
+	Use this script to save time starting your footprint but finish the footprint by hand checking
+	it carefully against the datasheet.
+
+	Run the ULP from any schematic or board file. The default settings will generate a nice looking
+	example. The ULP will also generate a settings file in the project directory of the project you
+	ran it from. This allows you to re-run the ULP and nudge settings without having to re-enter them all.
+
+	Designed to work in Eagle v7.7. May work in Eagle 8.
+
+	TODO:
+	Add bmp images of the various measurements to the GUI
+	Add INT pin to symbol options
+	Add warning to gyro/accel GUI, arrow directions are arbitrary, user must finish
+*/
+
+real partWidth = 3;
+real partHeight = 3;
+
+real padWidth = 0.7;
+real padHeight = 0.4;
+real padPitch = 0.5;
+real padExtension = 0.4;
+real distanceFromEdge = 0.1; //Distance the pad is from IC edge, either inset or outset
+real pinSizeX = 0.567; //Size of pins
+real pinSizeY = 0.300;
+
+int numberOfPads_Right = 5;
+int numberOfPads_Lower = 3;
+int numberOfPads_Left = 5;
+int numberOfPads_Upper = 3;
+int pin1Location = 3; //Top Right(0), Lower Right(1), Lower Left(2), Top Left(3)
+int padNumberingDirection = 1; //CW(0), CCW(1)
+
+real centerPadHeight = 0.0;
+real centerPadWidth = 0.0;
+int centerCreamSize = 25; //Percent of coverage
+
+int opt_padAlign = 1; //Either inset (0), edge align (1), or outset (2)
+
+int opt_gyroAccelAxis = 1; //Either no axis indicators(0), accel (1), both accel/gyro (1)
+
+int opt_pins_I2C = 1;
+int opt_pins_I2C_ADDR = 1;
+int opt_pins_UART = 0;
+int opt_pins_SPI = 0;
+int opt_pins_RST = 0;
+
+string deviceName = "MMA8452Q";
+
+int generateFootprint = 1;
+int generateSymbol = 1;
+int generateDevice = 1;
+
+string bigScript = "";
+string settingsFile = "partCreateSettings.txt";
+
+string get_project_path() {
+    if (board)     board(B)     return(filedir(B.name));
+    if (schematic) schematic(B) return(filedir(B.name));
+}
+
+void createFile()
+{
+    string s = "";
+
+    //Creating and edit file stuff
+    //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    //See if this library already exists. If yes, ask user to overwrite
+    string a[];
+    string fileToFind = "";
+    string fileToFindLibrary = "";
+    sprintf(fileToFind, "%s", deviceName);
+    fileToFind = get_project_path() + fileToFind;
+    int n = fileglob(a, fileToFind + ".lbr");
+
+    //Warn user we are about to overwrite a library of the same name
+    if (n != 0)
+    {
+        if (dlgMessageBox("!You are about to write over a library.\nAre you sure?", "&Yes", "&No") != 0) {
+            exit(0); //Bail
+        }
+
+        //Trick to make sure the library window is closed
+        bigScript += "SET CONFIRM YES;\n";
+        sprintf(s, "OPEN %s.lbr;\n", fileToFind);
+        bigScript += s;
+        bigScript += "SET CONFIRM OFF;\n";
+
+        bigScript += "SET CONFIRM YES;\n";
+        sprintf(s, "REMOVE %s.dev;\n", deviceName);
+        bigScript += s;
+        bigScript += "SET CONFIRM OFF;\n";
+
+        bigScript += "SET CONFIRM YES;\n";
+        sprintf(s, "REMOVE %s.pac;\n", deviceName);
+        bigScript += s;
+        bigScript += "SET CONFIRM OFF;\n";
+
+        bigScript += "SET CONFIRM YES;\n";
+        sprintf(s, "REMOVE %s.sym;\n", deviceName);
+        bigScript += s;
+        bigScript += "SET CONFIRM OFF;\n";
+    }
+
+    //Create the library
+    bigScript += "SET CONFIRM YES;\n";
+    sprintf(s, "OPEN %s.lbr;\n", fileToFind);
+    bigScript += s;
+    bigScript += "SET CONFIRM OFF;\n";
+
+    //Save our work
+    bigScript += "SET CONFIRM YES;\n";
+    bigScript += "WRITE;\n";
+    bigScript += "SET CONFIRM OFF;\n";
+    //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+}
+
+void createFootprint()
+{
+    string s = "";
+
+    //Creating and edit file stuff
+    //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    //Create package
+    bigScript += "SET CONFIRM YES;\n";
+    sprintf(s, "EDIT %s.pac;\n", deviceName);
+    bigScript += s;
+    bigScript += "SET CONFIRM OFF;\n";
+    //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    //Set defaults for library editing
+    bigScript += "Grid mm 1.0 on;\n";
+    //Layer colors
+    bigScript += "Set palette 16 0xFFFFFFFF;"; //Super white
+    bigScript += "Set palette 24 0xFFC0C0C0;"; //#Grey - color used when text is selected (anti palette location 16)
+    bigScript += "Set color_layer 1 4;"; //#Set top layer to dark red
+    bigScript += "Set color_layer 16 1;"; //#Set bottom layer to dark blue
+    bigScript += "Set color_layer 17 2;"; //#Set pads to green
+    bigScript += "Set color_layer 18 2;"; //#Set vias to green
+    bigScript += "Set color_layer 19 6;"; //#Set unrouted to dark yellow
+    bigScript += "Set color_layer 20 15;"; //#Set dimension to light gray
+    bigScript += "Set color_layer 21 16;"; //#Set tPlace to white
+    bigScript += "Set color_layer 22 14;"; //#Set bPlace to yellow
+    bigScript += "Set color_layer 23 15;"; //#Set tOrigins to light gray
+    bigScript += "Set color_layer 24 15;"; //#Set bOrigins to light gray
+    bigScript += "Set color_layer 45 7;"; //#Set Holes to dark gray
+    bigScript += "Set color_layer 51 6;"; //#Set tDocu to mellow yellow
+    bigScript += "display none; display 1 16 17 18 19 20 21 22 23 24 29 45 51; display -25 -26 -27 -28;";
+
+    //Begin generating package
+    //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    //Create the part outline in tDocu
+    bigScript += "LAYER 51;\n";
+    sprintf(s, "WIRE 0.127 (%f %f) +0 (%f %f) +0 (%f %f) +0 (%f %f) +0 (%f %f);\n",
+            partWidth/2.0, partHeight/2.0,
+            partWidth/2.0, -1*partHeight/2.0,
+            -1*partWidth/2.0, -1*partHeight/2.0,
+            -1*partWidth/2.0, partHeight/2.0,
+            partWidth/2.0, partHeight/2.0
+           );
+    bigScript += s;
+
+    //Add >Names/Value tags to footprint
+    bigScript += "LAYER 25;\n";
+    bigScript += "CHANGE ALIGN BOTTOM LEFT;\n";
+    bigScript += "CHANGE SIZE 0.508;\n";
+    //bigScript += "TEXT '>Name' (.5 .5);\n";
+    sprintf(s,"TEXT '>Name' (%f %f);\n",
+            partWidth/2.0 * -1,
+            partHeight/2.0 + 0.5
+           );
+    bigScript += s; //Name
+
+    bigScript += "LAYER 27;\n";
+    //bigScript += "TEXT '>Value' (.5 -.5);\n";
+    sprintf(s,"TEXT '>Value' (%f %f);\n",
+            partWidth/2.0 * -1,
+            (partHeight/2.0 + 1) * -1
+           );
+    bigScript += s; //Value
+
+    //Add pin 1 indicator dot
+    //pin1Location; //Top Right(0), Lower Right(1), Lower Left(2), Top Left(3)
+    int xMultiplier = 1;
+    int yMultiplier = 1;
+    if (pin1Location == 0) { xMultiplier = 1; yMultiplier = 1; } //Top right
+    else if (pin1Location == 1) {  xMultiplier = 1;  yMultiplier = -1; } //Lower right
+    else if (pin1Location == 2) {  xMultiplier = -1; yMultiplier = -1; } //Lower left
+    else if (pin1Location == 3) {  xMultiplier = -1; yMultiplier = 1; } //Top left
+
+    bigScript += "LAYER 21;\n"; //tSilk
+    real indicatorOffset = 0.6; //Move away from IC edge this amount
+    sprintf(s,"CIRCLE 0 (%f %f) (%f %f);\n",
+            xMultiplier * (partWidth/2.0 + indicatorOffset),
+            yMultiplier * (partHeight/2.0),
+            xMultiplier * (partWidth/2.0 + indicatorOffset + 0.1),
+            yMultiplier * (partHeight/2.0 + 0.1)
+           );
+    bigScript += s; //Pin 1 indicator
+
+    //Add silkscreen corners
+    //Silkscreen should be no less than 0.007" wide to print reliably
+    real cornerSize = 10.0; //This will make the corner 1/10th of the width and height long
+    real silkOffset = 0.25; //Push silk 0.25mm out from actual chip outline so as not to hit copper
+    string corners = "";
+    corners += "LAYER 21;\n"; //tSilk
+    //WIRE 0.1778 (-1 2) (1 2) (1 -2);
+    //Top right corner
+    sprintf(s,"WIRE 0.1778 (%f %f) +0 (%f %f) +0 (%f %f);\n",
+            partWidth/2.0 - partWidth/cornerSize, partHeight/2.0 + silkOffset,
+            partWidth/2.0 + silkOffset, partHeight/2.0 + silkOffset,
+            partWidth/2.0 + silkOffset, partHeight/2.0 - partHeight/cornerSize
+           );
+    corners += s;
+
+    //Lower right corner
+    sprintf(s,"WIRE 0.1778 (%f %f) +0 (%f %f) +0 (%f %f);\n",
+            partWidth/2.0 + silkOffset, -1*partHeight/2.0 + partHeight/cornerSize,
+            partWidth/2.0 + silkOffset, -1*partHeight/2.0 - silkOffset,
+            partWidth/2.0 - partWidth/cornerSize, -1*partHeight/2.0 - silkOffset
+           );
+    corners += s;
+
+    //Lower left corner
+    sprintf(s,"WIRE 0.1778 (%f %f) +0 (%f %f) +0 (%f %f);\n",
+            -1*partWidth/2.0 + partWidth/cornerSize, -1*partHeight/2.0 - silkOffset,
+            -1*partWidth/2.0 - silkOffset, -1*partHeight/2.0 - silkOffset,
+            -1*partWidth/2.0 - silkOffset, -1*partHeight/2.0 + partHeight/cornerSize
+           );
+    corners += s;
+
+    //Upper left corner
+    sprintf(s,"WIRE 0.1778 (%f %f) +0 (%f %f) +0 (%f %f);\n",
+            -1*partWidth/2.0 - silkOffset, partHeight/2.0 - partHeight/cornerSize,
+            -1*partWidth/2.0 - silkOffset, partHeight/2.0 + silkOffset,
+            -1*partWidth/2.0 + partWidth/cornerSize, partHeight/2.0 + silkOffset
+           );
+    corners += s;
+    bigScript += corners;
+
+    //Add gyro/accel axis indicators
+    string imuIndicators = "";
+    imuIndicators += "LAYER 51;\n"; //tDocu
+    if (opt_gyroAccelAxis == 1 || opt_gyroAccelAxis == 2) //Print text and arrows
+    {
+        imuIndicators += "CHANGE SIZE 0.254;\n";
+        imuIndicators += "CHANGE ALIGN CENTER;\n";
+        imuIndicators += "TEXT 'X' (0.7 0.0);\n";
+        imuIndicators += "TEXT 'Y' (0.0 1.2);\n";
+        imuIndicators += "TEXT 'Z' (0.84 0.66);\n";
+
+        //X Axis
+        imuIndicators += "WIRE 0.0254 (0.5 0) +0 (0 0);\n";
+        imuIndicators += "WIRE 0.0254 (0.45 0.05) +0 (0.5 0.0);\n"; //Arrow head
+        imuIndicators += "WIRE 0.0254 (0.5 0.0) +0 (0.45 -0.05);\n"; //Arrow head
+
+        //Y Axis
+        imuIndicators += "WIRE 0.0254 (0.0 1.0) +0 (0 0.5);\n";
+        imuIndicators += "WIRE 0.0254 (-0.05 0.95) +0 (0.0 1.0);\n"; //Arrow head
+        imuIndicators += "WIRE 0.0254 (0.0 1.0) +0 (0.05 0.95);\n"; //Arrow head
+
+        //Z Axis
+        imuIndicators += "CIRCLE 0 (0.533 0.669) (0.533 0.7);\n"; //Center dot
+        imuIndicators += "CIRCLE 0.0254 (0.533 0.669) (0.463 0.7);\n"; //Dot circle
+    }
+
+    if (opt_gyroAccelAxis == 2) //Print gyro curved arrows
+    {
+        //X Axis
+        imuIndicators += "WIRE 0.0254 (0.15 -0.15) +0 (0.184 -0.116);\n"; //Arrow head
+        imuIndicators += "WIRE 0.0254 (0.195 -0.174) +0 (0.15 -0.15);\n"; //Arrow head
+        imuIndicators += "WIRE 0.0254 (0.15 0.15) -180 (0.15 -0.15);\n"; //Curve
+
+        //Y Axis
+        imuIndicators += "WIRE 0.0254 (0.15 0.65) +0 (0.116 0.684);\n"; //Arrow head
+        imuIndicators += "WIRE 0.0254 (0.174 0.695) +0 (0.15 0.65);\n"; //Arrow head
+        imuIndicators += "WIRE 0.0254 (-0.15 0.65) -180 (0.15 0.65);\n"; //Curve
+
+        //Z Axis
+        imuIndicators += "WIRE 0.0254 (0.47 0.83) +0 (0.44 0.78);\n"; //Arrow head
+        imuIndicators += "WIRE 0.0254 (0.44 0.78) +0  (0.49 0.77);\n"; //Arrow head
+        imuIndicators += "WIRE 0.0254 (0.62 0.55) +180 (0.44 0.78);\n"; //Curve
+    }
+    bigScript += imuIndicators;
+
+    //Begin adding pads
+    int numberOfPads = numberOfPads_Left + numberOfPads_Right + numberOfPads_Upper + numberOfPads_Lower;
+    int numberOfSides = 0;
+    if (numberOfPads_Left > 0) numberOfSides++;
+    if (numberOfPads_Right > 0) numberOfSides++;
+    if (numberOfPads_Lower > 0) numberOfSides++;
+    if (numberOfPads_Upper > 0) numberOfSides++;
+
+    //Start from pin 1 location
+    int RIGHT_SIDE = 0;
+    int LOWER_SIDE = 1;
+    int LEFT_SIDE = 2;
+    int UPPER_SIDE = 3;
+    int currentSide = pin1Location; //Top Right(0), Lower Right(1), Lower Left(2), Top Left(3)
+    int sidePinsCompleted = 0;
+
+    //Initial side adjustment for CCW from pin 1
+    if (padNumberingDirection == 1)
+    {
+        currentSide--; //Go to next side CCW
+        if (currentSide < 0) currentSide += 4; //Wrap the variable
+    }
+
+    if (opt_padAlign == 0) distanceFromEdge = abs(distanceFromEdge) * -1; //Pads are inset
+    if (opt_padAlign == 1) distanceFromEdge = 0; //Pads are aligned with edge
+    if (opt_padAlign == 2) distanceFromEdge = abs(distanceFromEdge); //Pads are outset
+
+    for (int pinNumber = 1 ; pinNumber < numberOfPads + 1 ; pinNumber++)
+    {
+        real padLocationX = 0;
+        real padLocationY = 0;
+        int padRotation = 0;
+        real pinLocationX = 0;
+		real pinLocationY = 0;
+
+        //Advance to the next side if we have completed the pads for this side
+        while (1)
+        {
+            if (currentSide == RIGHT_SIDE && sidePinsCompleted == numberOfPads_Right)
+            {
+                if (padNumberingDirection == 0) currentSide++; //Go to next side CW
+                if (padNumberingDirection == 1) currentSide--; //Go to next side CCW
+                sidePinsCompleted = 0;
+            }
+            else if (currentSide == LOWER_SIDE && sidePinsCompleted == numberOfPads_Lower)
+            {
+                if (padNumberingDirection == 0) currentSide++; //Go to next side CW
+                if (padNumberingDirection == 1) currentSide--; //Go to next side CCW
+                sidePinsCompleted = 0;
+            }
+            else if (currentSide == LEFT_SIDE && sidePinsCompleted == numberOfPads_Left)
+            {
+                if (padNumberingDirection == 0) currentSide++; //Go to next side CW
+                if (padNumberingDirection == 1) currentSide--; //Go to next side CCW
+                sidePinsCompleted = 0;
+            }
+            else if (currentSide == UPPER_SIDE && sidePinsCompleted == numberOfPads_Upper)
+            {
+                if (padNumberingDirection == 0) currentSide++; //Go to next side CW
+                if (padNumberingDirection == 1) currentSide--; //Go to next side CCW
+                sidePinsCompleted = 0;
+            }
+            else
+            {
+                //We are on a side with pads to place, so break from the while loop
+                break;
+            }
+
+            //Wrap the variable
+            if (currentSide < 0) currentSide += 4;
+            if (currentSide > 3) currentSide -= 4;
+        }
+
+        //Right edge
+        if (currentSide == RIGHT_SIDE)
+        {
+            padRotation = 0;
+            padLocationX = partWidth/2.0 - padWidth/2.0;
+			pinLocationX = padLocationX - distanceFromEdge;
+            padLocationX += padExtension/2.0;
+            padLocationX += distanceFromEdge;
+            int padsPerSide = numberOfPads_Right;
+
+            padLocationY = padPitch * ((padsPerSide/2) - sidePinsCompleted);
+            if (padsPerSide % 2 == 0) padLocationY -= padPitch * 0.5; //Adjust for even number of pads
+            if (padNumberingDirection == 1) padLocationY *= -1; //Reverse direction for CCW pin numbering
+			pinLocationY = padLocationY;
+        }
+        //Bottom edge
+        else if (currentSide == LOWER_SIDE)
+        {
+            padRotation = 90;
+            padLocationY = partHeight/2.0 - padWidth/2.0;
+			pinLocationY = (padLocationY - distanceFromEdge) * -1;
+            padLocationY += padExtension/2.0;
+            padLocationY += distanceFromEdge;
+            padLocationY *= -1;
+            int padsPerSide = numberOfPads_Lower;
+
+            padLocationX = padPitch * ((padsPerSide/2) - sidePinsCompleted);
+            if (padsPerSide % 2 == 0) padLocationX -= padPitch * 0.5; //Adjust for even number of pads
+            if (padNumberingDirection == 1) padLocationX *= -1; //Reverse direction for CCW pin numbering
+			pinLocationX = padLocationX;
+        }
+        //Left edge
+        else if (currentSide == LEFT_SIDE)
+        {
+            padRotation = 180;
+            padLocationX = partWidth/2.0 - padWidth/2.0;
+			pinLocationX = (padLocationX - distanceFromEdge) * -1;;
+            padLocationX += padExtension/2.0;
+            padLocationX += distanceFromEdge;
+            padLocationX *= -1;
+            int padsPerSide = numberOfPads_Left;
+
+            padLocationY = padPitch * ((padsPerSide/2) - sidePinsCompleted);
+            if (padsPerSide % 2 == 0) padLocationY -= padPitch * 0.5; //Adjust for even number of pads
+            padLocationY *= -1;
+            if (padNumberingDirection == 1) padLocationY *= -1; //Reverse direction for CCW pin numbering
+			pinLocationY = padLocationY;
+        }
+        //Top edge
+        else if (currentSide == UPPER_SIDE)
+        {
+            padRotation = 270;
+            padLocationY = partHeight/2.0 - padWidth/2.0;
+			pinLocationY = (padLocationY - distanceFromEdge);
+            padLocationY += padExtension/2.0;
+            padLocationY += distanceFromEdge;
+            int padsPerSide = numberOfPads_Upper;
+
+            padLocationX = padPitch * ((padsPerSide/2) - sidePinsCompleted);
+            if (padsPerSide % 2 == 0) padLocationX -= padPitch * 0.5; //Adjust for even number of pads
+            padLocationX *= -1;
+            if (padNumberingDirection == 1) padLocationX *= -1; //Reverse direction for CCW pin numbering
+			pinLocationX = padLocationX;
+        }
+
+        sprintf(s,"SMD %.4f %.4f -0 R%d '%d' (%.4f %.4f);\n",
+                padWidth + padExtension,
+                padHeight,
+                padRotation,
+                pinNumber,
+                padLocationX,
+                padLocationY
+               );
+        bigScript += s; //Add pads
+
+		//Add a rectangle in tDocu to represent where physical pin will land on pad
+		real pinRectangleX_Lower;
+		real pinRectangleX_Upper;
+		real pinRectangleY_Lower;
+		real pinRectangleY_Upper;
+
+		bigScript += "LAYER 51;\n"; //tDocu
+		if(padRotation == 0 || padRotation == 180)
+		{
+			pinRectangleX_Lower = pinLocationX - (pinSizeX / 2);
+			pinRectangleX_Upper = pinLocationX + (pinSizeX / 2);
+			pinRectangleY_Lower = pinLocationY - (pinSizeY / 2);
+			pinRectangleY_Upper = pinLocationY + (pinSizeY / 2);
+		}
+		else
+		{
+			//Rotate this pin landing rectangle
+			//Swap X and Y
+			pinRectangleX_Lower = pinLocationX - (pinSizeY / 2);
+			pinRectangleX_Upper = pinLocationX + (pinSizeY / 2);
+			pinRectangleY_Lower = pinLocationY - (pinSizeX / 2);
+			pinRectangleY_Upper = pinLocationY + (pinSizeX / 2);
+		}
+		sprintf(s,"RECT (%.4f %.4f) (%.4f %.4f);\n",
+				pinRectangleX_Lower,
+				pinRectangleY_Lower,
+				pinRectangleX_Upper,
+				pinRectangleY_Upper
+			   );
+		bigScript += s;
+		
+		
+        sidePinsCompleted++;
+    }
+
+    //Add center pad
+	if(centerPadHeight > 0 && centerPadWidth > 0)
+	{
+		sprintf(s,"SMD %.4f %.4f -0 R0 NOCREAM '%d' (%.4f %.4f);\n",
+				centerPadWidth,
+				centerPadHeight,
+				//-0, //Roundness
+				numberOfPads + 1,
+				0.0,
+				0.0
+			   );
+		bigScript += s; //Add center pad
+		
+		//Add cream rectangle for center pad
+		bigScript += "LAYER 31;\n"; //Top cream
+		sprintf(s,"RECT (%.4f %.4f) (%.4f %.4f);\n",
+				(centerPadWidth*centerCreamSize/100.0)/2 *-1,
+				(centerPadHeight*centerCreamSize/100.0)/2,
+				(centerPadWidth*centerCreamSize/100.0)/2,
+				(centerPadHeight*centerCreamSize/100.0)/2 * -1
+			   );
+		bigScript += s; //Add center pad cream aperture
+
+		//Add a rectangle in tDocu to represent where physical pin will land on pad
+		real pinRectangleX_Lower = 0 - (centerPadWidth / 2);
+		real pinRectangleX_Upper = 0 + (centerPadWidth / 2);
+		real pinRectangleY_Lower = 0 - (centerPadHeight / 2);
+		real pinRectangleY_Upper = 0 + (centerPadHeight / 2);
+		bigScript += "LAYER 51;\n"; //tDocu
+		sprintf(s,"RECT (%.4f %.4f) (%.4f %.4f);\n",
+				pinRectangleX_Lower,
+				pinRectangleY_Lower,
+				pinRectangleX_Upper,
+				pinRectangleY_Upper
+			   );
+		bigScript += s;
+
+	}
+
+    //Save our work
+    bigScript += "SET CONFIRM YES;\n";
+    bigScript += "WRITE;\n";
+    bigScript += "SET CONFIRM OFF;\n";
+}
+
+void createSymbol()
+{
+    int numberOfPads = numberOfPads_Left + numberOfPads_Right + numberOfPads_Upper + numberOfPads_Lower;
+
+    string s = "";
+
+    //Creating and edit file stuff
+    //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    //Create symbol
+    bigScript += "SET CONFIRM YES;\n";
+    sprintf(s, "EDIT %s.sym;\n", deviceName);
+    bigScript += s;
+    bigScript += "SET CONFIRM OFF;\n";
+    //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    //Set defaults for library editing
+    bigScript += "GRID INCH 0.1 ON;\n";
+
+    //Create the part outline in symbols layer
+    real symbolWidth = 0.8;
+    real symbolHeight = (numberOfPads - 2) * 0.1 + 0.1;
+    
+	//If there is an even number of pins we have to offset the outline and pins to keep it on grid
+	real offset = 0.0;
+	if (numberOfPads % 2 == 0) offset = -0.05; 
+
+    bigScript += "LAYER 94;\n"; //Symbols
+    sprintf(s, "WIRE 0.01 (%f %f) +0 (%f %f) +0 (%f %f) +0 (%f %f) +0 (%f %f);\n",
+            symbolWidth/2.0, symbolHeight/2.0 + offset,
+            symbolWidth/2.0, (symbolHeight/2.0 - offset) * -1,
+            -1*symbolWidth/2.0, (symbolHeight/2.0 - offset) * -1,
+            -1*symbolWidth/2.0, (symbolHeight/2.0 + offset),
+            symbolWidth/2.0, (symbolHeight/2.0 + offset)
+           );
+    bigScript += s;
+
+    //Add pins
+    real nextAvailablePinY = symbolHeight/2 - 0.1 + offset; //Start at the top
+
+    for (int pinNumber = 1 ; pinNumber < numberOfPads + 1; pinNumber++)
+    {
+        string pinName = "A";
+        real pinLocationX = 0.0;
+        real pinLocationY = 0.0;
+        int pinRotation = 0;
+
+        //Special pins
+        if (pinNumber == 1)
+        {
+            pinRotation = 0;
+            pinName = "GND";
+            pinLocationX = (symbolWidth/2.0 + 0.1) * -1;
+            pinLocationY = (symbolHeight/2.0 - 0.1 - offset) * -1;
+        }
+        else if (pinNumber == 2)
+        {
+            pinRotation = 0;
+            pinName = "VCC";
+            pinLocationX = (symbolWidth/2.0 + 0.1) * -1;
+            pinLocationY = (symbolHeight/2.0 - 0.1 + offset);
+        }
+        else if (opt_pins_I2C == 1)
+        {
+            pinRotation = 180; //Right side
+            pinName = "SDA";
+            pinLocationX = (symbolWidth/2.0 + 0.1);
+            pinLocationY = nextAvailablePinY;
+            nextAvailablePinY -= 0.1;
+
+            sprintf(s, "PIN '%s' R%d SHORT (%0.2f %0.2f);\n",
+                    pinName,
+                    pinRotation,
+                    pinLocationX,
+                    pinLocationY
+                   );
+            bigScript += s;
+            pinNumber++;
+
+            pinName = "SCL";
+            pinLocationY = nextAvailablePinY;
+            nextAvailablePinY -= 0.1;
+
+            opt_pins_I2C = 0; //Mark as taken care of
+        }
+        else if (opt_pins_I2C_ADDR == 1)
+        {
+            pinRotation = 180; //Right side
+            pinName = "ADDR";
+            pinLocationX = (symbolWidth/2.0 + 0.1);
+            pinLocationY = nextAvailablePinY;
+            nextAvailablePinY -= 0.1;
+
+            opt_pins_I2C_ADDR = 0; //Mark as taken care of
+        }
+        else if (opt_pins_UART == 1)
+        {
+            pinRotation = 180; //Right side
+            pinName = "TX";
+            pinLocationX = (symbolWidth/2.0 + 0.1);
+            pinLocationY = nextAvailablePinY;
+            nextAvailablePinY -= 0.1;
+
+            sprintf(s, "PIN '%s' R%d SHORT (%0.2f %0.2f);\n",
+                    pinName,
+                    pinRotation,
+                    pinLocationX,
+                    pinLocationY
+                   );
+            bigScript += s;
+            pinNumber++;
+
+            pinName = "RX";
+            pinLocationY = nextAvailablePinY;
+            nextAvailablePinY -= 0.1;
+
+            opt_pins_UART = 0; //Mark as taken care of
+        }
+        else if (opt_pins_SPI == 1)
+        {
+            pinRotation = 180; //Right side
+            pinName = "MOSI";
+            pinLocationX = (symbolWidth/2.0 + 0.1);
+            pinLocationY = nextAvailablePinY;
+            nextAvailablePinY -= 0.1;
+
+            sprintf(s, "PIN '%s' R%d SHORT (%0.2f %0.2f);\n",
+                    pinName,
+                    pinRotation,
+                    pinLocationX,
+                    pinLocationY
+                   );
+            bigScript += s;
+            pinNumber++;
+
+            pinName = "MISO";
+            pinLocationY = nextAvailablePinY;
+            nextAvailablePinY -= 0.1;
+            sprintf(s, "PIN '%s' R%d SHORT (%0.2f %0.2f);\n",
+                    pinName,
+                    pinRotation,
+                    pinLocationX,
+                    pinLocationY
+                   );
+            bigScript += s;
+            pinNumber++;
+
+            pinName = "SCK";
+            pinLocationY = nextAvailablePinY;
+            nextAvailablePinY -= 0.1;
+            sprintf(s, "PIN '%s' R%d SHORT (%0.2f %0.2f);\n",
+                    pinName,
+                    pinRotation,
+                    pinLocationX,
+                    pinLocationY
+                   );
+            bigScript += s;
+            pinNumber++;
+
+            pinName = "!CS";
+            pinLocationY = nextAvailablePinY;
+            nextAvailablePinY -= 0.1;
+
+            opt_pins_SPI = 0; //Mark as taken care of
+        }
+        else if (opt_pins_RST == 1)
+        {
+            pinRotation = 180; //Right side
+            pinName = "!RST";
+            pinLocationX = (symbolWidth/2.0 + 0.1);
+            pinLocationY = nextAvailablePinY;
+            nextAvailablePinY -= 0.1;
+
+            opt_pins_RST = 0; //Mark as taken care of
+        }
+        else //All other pins
+        {
+            pinRotation = 180; //Right side
+            sprintf(s, "GP%d", pinNumber);
+            pinName = s;
+            pinLocationX = (symbolWidth/2.0 + 0.1);
+            pinLocationY = nextAvailablePinY;
+            nextAvailablePinY -= 0.1;
+        }
+
+        sprintf(s, "PIN '%s' R%d SHORT (%0.2f %0.2f);\n",
+                pinName,
+                pinRotation,
+                pinLocationX,
+                pinLocationY
+               );
+        bigScript += s;
+    }
+
+    //Add >Names/Value tags to symbol
+    bigScript += "LAYER 95;\n";
+    bigScript += "CHANGE ALIGN BOTTOM LEFT;\n";
+    bigScript += "CHANGE SIZE 0.07;\n";
+    sprintf(s,"TEXT '>Name' (%f %f);\n",
+            symbolWidth/2.0 * -1,
+            symbolHeight/2.0 + 0.02 + offset
+           );
+    bigScript += s; //Name
+
+    bigScript += "LAYER 96;\n";
+    sprintf(s,"TEXT '>Value' (%f %f);\n",
+            symbolWidth/2.0 * -1,
+            (symbolHeight/2.0 + 0.1 - offset) * -1
+           );
+    bigScript += s; //Value
+
+    //Save our work
+    bigScript += "SET CONFIRM YES;\n";
+    bigScript += "WRITE;\n";
+    bigScript += "SET CONFIRM OFF;\n";
+
+}
+
+void createDevice()
+{
+    string s = "";
+
+    //Creating and edit file stuff
+    //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    //Create package
+    bigScript += "SET CONFIRM YES;\n";
+    sprintf(s, "EDIT %s.dev;\n", deviceName);
+    bigScript += s;
+    bigScript += "SET CONFIRM OFF;\n";
+    //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    sprintf(s, "ADD %s (0 0);\n", deviceName); //Add the symbol to the part
+    bigScript += s;
+    sprintf(s, "PACKAGE %s;\n", deviceName); //Add the footprint to the part
+    bigScript += s;
+    bigScript += "PREFIX U;\n"; //Set the prefix to get rid of ? in names
+    bigScript += "NAME G$1 U1;\n"; //Set the prefix to get rid of ? in names
+
+    //Save our work
+    bigScript += "SET CONFIRM YES;\n";
+    bigScript += "WRITE;\n";
+    bigScript += "SET CONFIRM OFF;\n";
+}
+
+//Fancy GUI to get parameters from user
+void menu(void)
+{
+    //Look for a previous settings file
+    string a[];
+    string fileToFind = get_project_path() + settingsFile;
+    int n = fileglob(a, fileToFind);
+    if (n != 0)
+    {
+        //Settings are available so load them
+        string csv;
+        int nChars = fileread(csv, fileToFind);
+        string setting[];
+        int n = strsplit(setting, csv, ',');
+
+        deviceName = setting[0];
+        partWidth = strtod(setting[1]);
+        partHeight = strtod(setting[2]);
+        padWidth = strtod(setting[3]);
+        padHeight = strtod(setting[4]);
+        padPitch = strtod(setting[5]);
+        padExtension = strtod(setting[6]);
+        distanceFromEdge = strtod(setting[7]);
+        centerPadHeight = strtod(setting[8]);
+        centerPadWidth = strtod(setting[9]);
+        centerCreamSize = strtol(setting[10]);
+        opt_padAlign = strtol(setting[11]);
+        opt_gyroAccelAxis = strtol(setting[12]);
+        opt_pins_I2C = strtol(setting[13]);
+        opt_pins_UART = strtol(setting[14]);
+        opt_pins_SPI = strtol(setting[15]);
+        opt_pins_RST = strtol(setting[16]);
+        generateFootprint = strtol(setting[17]);
+        generateSymbol = strtol(setting[18]);
+        numberOfPads_Right = strtol(setting[19]);
+        numberOfPads_Lower = strtol(setting[20]);
+        numberOfPads_Left = strtol(setting[21]);
+        numberOfPads_Upper = strtol(setting[22]);
+        pin1Location = strtol(setting[23]);
+        padNumberingDirection = strtol(setting[24]);
+        opt_pins_I2C_ADDR = strtol(setting[25]);
+        generateDevice = strtol(setting[26]);
+        pinSizeX = strtod(setting[27]);
+        pinSizeY = strtod(setting[28]);
+    }
+
+
+    int result = dlgDialog("SparkFun Part Creator" )
+    {
+
+        dlgLabel("<b>All dimensions are in mm</b>");
+        //dlgLabel("Test: <img src=test.bmp>");
+
+        dlgHBoxLayout {
+            dlgLabel("Device name or part # (ex: BME680, MLX90632, etc):");
+            dlgStringEdit(deviceName);
+        }
+
+        dlgTabWidget {
+
+            dlgTabPage("&Footprint") {
+                dlgCheckBox("Generate Footprint for this Device", generateFootprint);
+
+                dlgGroup("Part Details") {
+                    dlgHBoxLayout {
+                        dlgGroup("Part Dimensions:") {
+                            dlgHBoxLayout {
+                                dlgLabel("Part width:");
+                                dlgRealEdit(partWidth, 0.1, 50.0);
+                            }
+                            dlgHBoxLayout {
+                                dlgLabel("Part Height:");
+                                dlgRealEdit(partHeight, 0.1, 50.0);
+                            }
+                        }
+                        dlgGroup("Pin Dimensions:") {
+                            dlgHBoxLayout {
+                                dlgLabel("Pin width:");
+                                dlgRealEdit(pinSizeX, 0.01, 5.0);
+                            }
+                            dlgHBoxLayout {
+                                dlgLabel("Pin Height:");
+                                dlgRealEdit(pinSizeY, 0.01, 5.0);
+                            }
+                        }
+                        dlgGroup("Pin 1 Location:") {
+                            dlgRadioButton("Top Right", pin1Location);
+                            dlgRadioButton("Lower Right", pin1Location);
+                            dlgRadioButton("Lower Left", pin1Location);
+                            dlgRadioButton("Top Left", pin1Location);
+                        }
+                        dlgGroup("Pad Numbering Direction") {
+                            dlgRadioButton("CW", padNumberingDirection);
+                            dlgRadioButton("CCW", padNumberingDirection);
+                        }
+                    }
+                }
+                dlgGroup("Pad Info") {
+                    dlgHBoxLayout {
+                        dlgGroup("Num of pads:") {
+                            dlgHBoxLayout {
+                                dlgLabel("Right edge:");
+                                dlgIntEdit(numberOfPads_Right, 0, 200);
+                            }
+                            dlgHBoxLayout {
+                                dlgLabel("Lower edge:");
+                                dlgIntEdit(numberOfPads_Lower, 0, 200);
+                            }
+                            dlgHBoxLayout {
+                                dlgLabel("Left edge:");
+                                dlgIntEdit(numberOfPads_Left, 0, 200);
+                            }
+                            dlgHBoxLayout {
+                                dlgLabel("Upper edge:");
+                                dlgIntEdit(numberOfPads_Upper, 0, 200);
+                            }
+                        }
+                        dlgGroup("Center Pad:") {
+                            dlgLabel("Leave zeros in place if this part has no center pad");
+                            dlgHBoxLayout {
+                                dlgLabel("Width:");
+                                dlgRealEdit(centerPadWidth, 0, 10.0);
+                            }
+                            dlgHBoxLayout {
+                                dlgLabel("Height:");
+                                dlgRealEdit(centerPadHeight, 0, 10.0);
+                            }
+                            dlgLabel("Paste aperture as % of pad:");
+                            dlgHBoxLayout {
+                                dlgLabel("(Less than 50% is recommended)");
+                                dlgIntEdit(centerCreamSize, 0, 150);
+                            }
+                        }
+                    }
+                }
+                dlgGroup("Pads") {
+                    dlgHBoxLayout {
+                        dlgGroup("Dimensions") {
+                            dlgHBoxLayout {
+                                dlgLabel("Width:");
+                                dlgRealEdit(padWidth, 0.1, 10.0);
+                            }
+                            dlgHBoxLayout {
+                                dlgLabel("Height:");
+                                dlgRealEdit(padHeight, 0.1, 10.0);
+                            }
+                            dlgHBoxLayout {
+                                dlgLabel("Pitch:");
+                                dlgRealEdit(padPitch, 0.1, 10.0);
+                            }
+                        }
+                        dlgGroup("Alignment") {
+                            dlgRadioButton("Inset pads", opt_padAlign);
+                            dlgRadioButton("Align to IC edge", opt_padAlign);
+                            dlgRadioButton("Pads external to IC edge", opt_padAlign);
+                            dlgHBoxLayout {
+                                dlgLabel("Distance from edge:");
+                                dlgRealEdit(distanceFromEdge, 0, 10.0);
+                            }
+                        }
+                        dlgGroup("Add Pad Extension") {
+                            dlgLabel("For leadless devices this extends pads\npast edge of IC boundary\nto make rework easier");
+                            dlgHBoxLayout {
+                                dlgLabel("Pad length extension:");
+                                dlgRealEdit(padExtension, 0.0, 10.0);
+                            }
+                        }
+                    }
+                }
+                dlgGroup("IMU Axis Indicators") {
+                    dlgRadioButton("Add none", opt_gyroAccelAxis);
+                    dlgRadioButton("Add accel arrows", opt_gyroAccelAxis);
+                    dlgRadioButton("Add gyro/accel combined arrows", opt_gyroAccelAxis);
+                }
+            }
+
+            dlgTabPage("&Symbol") {
+                dlgStretch(1);
+                dlgCheckBox("Generate Symbol for this Device", generateSymbol);
+                dlgStretch(1);
+                dlgGroup("Features on Device") {
+                    dlgStretch(1);
+                    dlgCheckBox("UART", opt_pins_UART);
+                    dlgGroup("I2C") {
+                        dlgStretch(1);
+                        dlgCheckBox("I2C", opt_pins_I2C);
+                        dlgCheckBox("Address Pin", opt_pins_I2C_ADDR);
+                    }
+                    dlgStretch(1);
+                    dlgCheckBox("SPI", opt_pins_SPI);
+                    dlgCheckBox("RST", opt_pins_RST);
+                    dlgSpacing(600);
+                }
+            }
+            dlgTabPage("&Device") {
+                dlgCheckBox("Generate Device", generateDevice);
+            }
+
+        }
+
+        dlgHBoxLayout {
+            dlgStretch(1);
+            dlgPushButton("+OK") {                dlgAccept(1);            };
+            dlgPushButton("-Cancel") {                dlgReject(0);            };
+        }
+    };
+
+
+    if (!result)
+        exit (0);
+
+    //Record settings to file
+    string fileName = get_project_path() + settingsFile;
+    output(fileName) {
+        string settings = "";
+        sprintf(settings, "%s, \
+                %0.2f, %0.2f, %0.2f, %0.2f, %0.2f, %0.2f, %0.2f, %0.2f, %0.2f, %d, \
+                %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, \
+                %d, %d, %d, %d, %d, %d, %0.3f, %0.3f",
+                deviceName,
+
+                partWidth,
+                partHeight,
+                padWidth,
+                padHeight,
+                padPitch,
+                padExtension,
+                distanceFromEdge,
+                centerPadHeight,
+                centerPadWidth,
+                centerCreamSize,
+
+                opt_padAlign,
+                opt_gyroAccelAxis,
+                opt_pins_I2C,
+                opt_pins_UART,
+                opt_pins_SPI,
+                opt_pins_RST,
+                generateFootprint,
+                generateSymbol,
+                numberOfPads_Right,
+                numberOfPads_Lower,
+
+                numberOfPads_Left,
+                numberOfPads_Upper,
+                pin1Location,
+                padNumberingDirection,
+                opt_pins_I2C_ADDR,
+                generateDevice,
+                pinSizeX,
+                pinSizeY
+               );
+        printf(settings);
+    }
+
+    //Error checking
+    if (opt_padAlign == 0 && distanceFromEdge == 0.0)
+    {
+        dlgMessageBox("Pads are inset but no distance was defined");
+        exit(0);
+    }
+    if (opt_padAlign == 2 && distanceFromEdge == 0.0)
+    {
+        dlgMessageBox("Pads are outset but no distance was defined");
+        exit(0);
+    }
+
+    createFile();
+
+    if (generateSymbol == 1)
+    {
+        createSymbol();
+    }
+    if (generateFootprint == 1)
+    {
+        createFootprint();
+    }
+    if (generateDevice == 1)
+    {
+        createDevice();
+    }
+
+    exit(bigScript); //Execute this generated ULP
+
+    return;
+}
+
+if (board || schematic)
+{
+    menu();
+}
+else
+{
+    dlgMessageBox("Please run Part Creator from a board or schematic.");
+    exit(1);
+
+}
