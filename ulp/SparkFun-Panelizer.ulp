@@ -70,6 +70,9 @@ real yMin = 0;
 real panelWidth = 0;
 real panelHeight = 0;
 
+int numberOfColumns = 0;
+int numberOfRows = 0;
+
 string overHangingParts = "false";
 real verticalGapNeeded = 0;
 real horizontalGapNeeded = 0;
@@ -263,10 +266,10 @@ void panelizer() {
 	if(drawPanelBorders == 1) borderWidth = 0.25;
 
 	//Calculate the number of copies we need to achieve our min panel size
-	int numberOfColumns = ceil(panelSizeX / (designWidth + verticalGap));
+	numberOfColumns = ceil(panelSizeX / (designWidth + verticalGap));
 	if(numberOfColumns * (designWidth + verticalGap) + verticalGap < panelSizeX) numberOfColumns++;
 	
-	int numberOfRows = ceil(panelSizeY / (designHeight + horizontalGap));
+	numberOfRows = ceil(panelSizeY / (designHeight + horizontalGap));
 	if(numberOfRows * (designHeight + horizontalGap) + horizontalGap < panelSizeY) numberOfRows++;
 	
 	panelWidth = (designWidth + verticalGap) * numberOfColumns - verticalGap;
@@ -770,6 +773,8 @@ void orderingInstructionsWrite()
 	string boardThickness = getBoardThickness(); //Search for 0.8mm text on board
 	string boardColor = getBoardColor(); //Search board for aesthetics to determine soldermask color
 	
+	int pcsPerPanel = numberOfColumns * numberOfRows; //Total count per panel. Helps when figuring out the number of panels to order
+	
 	string boardSilkColor = "White"; //Almost all boards have white silkscreen. Only the white soldermask boards (Google-IOIO) require black silk
 	if(boardColor == "White")
 	{
@@ -785,6 +790,7 @@ void orderingInstructionsWrite()
 		printf("oz copper, %s\n", "1oz");
 		printf("finish, %s\n", "HASL lead free");
 		printf("stencils, %s\n", stencilsRequired);
+		printf("pcs per panel, %d\n", pcsPerPanel);
 	}
 	
 }
