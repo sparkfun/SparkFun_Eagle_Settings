@@ -77,6 +77,9 @@ Assign AF12 'info';
 # Display the bottom side of board and what it will look like in a more human readable view. The "f" is for "flip".
 Assign C+F 'RUN SparkFun-Flip.ulp;'
 
+# Turn off everything but the unrouted airwires
+Assign C+H 'DISPLAY NONE; DISPLAY 19;'
+
 SCH:
 Grid Default; #BHW Reset the grid to the standard value
 Change Width 0.006; #BHW Set the 6mil rule
