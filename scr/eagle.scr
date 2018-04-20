@@ -75,8 +75,7 @@ Assign F12 'show';
 Assign AF12 'info';
 
 # Display the bottom side of board and what it will look like in a more human readable view. The "f" is for "flip".
-Assign C+F 'display all; group all; mirror (> 0 0); display none; display 1 16 17 18 19 20 21 23 25; group;';
-
+Assign C+F 'RUN SparkFun-Flip.ulp;'
 
 SCH:
 Grid Default; #BHW Reset the grid to the standard value
