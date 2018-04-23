@@ -27,7 +27,7 @@ string mismatchParts = "";
 //There are a lot of schematic parts that are not mounted to the PCB
 //These lists of words help ignore the correct parts
 //Be careful adding new words. It can cause valid components to get ignored.
-string noMount_WholeWordMatch = "5V, 3.3V, 2.8V, GND, VIN";
+string noMount_WholeWordMatch = "5V, 3.3V, 2.8V, GND, VIN, VCCIO";
 string noMount_PartialWordMatch = "LOGO, TESTPOINT, FRAME, FIDUCIAL, JUMPER, I2C_STANDARD, CONN_, STAND-OFF";
 
 //Search for match between word_1 and word_2. Looks for comma delimited lists in word_2
