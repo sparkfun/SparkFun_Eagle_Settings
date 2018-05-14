@@ -155,8 +155,8 @@ void createGerbers()
 	//Convert forward slashes to back slashes so we can run system commands
 	string projectDirectory = convertForwardToBackSlashes(get_project_path());
 	
-	//string commandToRun = "cmd.exe /C echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
-	string commandToRun = "cmd.exe /K echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
+	string commandToRun = "cmd.exe /C echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
+	//string commandToRun = "cmd.exe /K echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
 	string s = "";
 	
     //Remove any files in the production folder left over from previous panel CAM
