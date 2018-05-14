@@ -280,11 +280,8 @@ void panelizer() {
 	panelHeight += borderWidth * 2;
 	if(drawPanelBorders == 1) panelHeight += (horizontalGap * 2);
 
-    //Turn off all layers but the ones we want to copy
-	//Include 2 and 15 (layers for four layer board)
-	//Include mill layer
-	//Exclude tDocu
-    bigScript += "DISPLAY NONE; DISPLAY 1 2 15 16 17 18 20 21 22 23 24 45 46; DISPLAY -25 -26 -27 -28 -51;\n";
+    //Tun on all layers for copying
+    bigScript += "DISPLAY ALL;\n"; //Copy everything
 
     //Draw a box slightly larger that the dimensions of the board
 	real lowerX = xMin - copyOversizeAmount;
@@ -310,8 +307,8 @@ void panelizer() {
     //Go back to inch grid
 	bigScript += "GRID INCH 0.05 ON;GRID ALT INCH 0.005;\n";
 
-	//Turn on layers
-    bigScript += "DISPLAY NONE; DISPLAY 1 2 15 16 17 18 20 21 22 23 24 45 46 51; DISPLAY -25 -26 -27 -28;\n";
+	//Turn on all layers
+    bigScript += "DISPLAY ALL;\n";
 
 	//Paste the copies to fill the panel
 	real xCoord = 0;
@@ -705,7 +702,8 @@ string convertForwardToBackSlashes(string thing)
 	int pos = strrchr(thing, '/');
 	while (pos >= 0) 
 	{
-		thing = strsub(thing, 0, pos) + "\\\\" + strsub(thing, pos + 1, strlen(thing)); //Remove and replace
+		//thing = strsub(thing, 0, pos) + "\\\\" + strsub(thing, pos + 1, strlen(thing)); //Remove and replace
+		thing = strsub(thing, 0, pos) + "\\" + strsub(thing, pos + 1, strlen(thing)); //Remove and replace
 		pos = strrchr(thing, '/'); //Look for the next forward slash
 	}
 	return(thing);
@@ -725,6 +723,8 @@ void createFile()
 	string projectDirectory = get_project_path();
     panelFileLocation = projectDirectory + "Production/" + baseFileName + "-Panel.brd";
 	int n = fileglob(a, panelFileLocation);
+	
+	string rootPanelFileName = projectDirectory + "Production/" + baseFileName + "-Panel"; //Just the file name, no extension
 
     //Warn user we are about to overwrite a file of the same name
     if (n != 0)
@@ -732,22 +732,23 @@ void createFile()
         if (dlgMessageBox("!You are about to write over a panel file.\nAre you sure?", "&Yes", "&No") != 0) {
             exit(0); //Bail
         }
-
-        string s = "";
-		bigScript += "SET CONFIRM YES;\n";
-        sprintf(s, "REMOVE '%s';\n", panelFileLocation);
-        bigScript += s;
-        bigScript += "SET CONFIRM OFF;\n";
-    }
+	}
 	
 	projectDirectory = convertForwardToBackSlashes(projectDirectory); //Convert forward slashes to back slashes so we can run system command
 	
-    string commandToRun = "cmd.exe /C IF NOT EXIST " + "\"" + projectDirectory + "\\Production\" md \"" + projectDirectory + "\\Production\""; // /K to keep window open
+    //Make the production directory if one does not exist
+	string commandToRun = "cmd.exe /C IF NOT EXIST " + "\"" + projectDirectory + "\\Production\" md \"" + projectDirectory + "\\Production\""; // /K to keep window open
     if(system(commandToRun) != 0)
 	{
 		dlgMessageBox("Error: Command failed.", "OK");
 	}	
 
+    //Remove any files in the production folder left over from previous panel CAM
+	sprintf(commandToRun, "cmd.exe /C del \"%sProduction\\%s-Panel.*\"", projectDirectory, baseFileName);
+    if(system(commandToRun) != 0)
+	{
+		dlgMessageBox("Error: Command failed.", "OK");
+	}
 }
 
 //Record board thickness, soldermask color, silkscreen color, oz copper, and plating to a text file

@@ -136,7 +136,8 @@ string convertForwardToBackSlashes(string thing)
 	int pos = strrchr(thing, '/');
 	while (pos >= 0) 
 	{
-		thing = strsub(thing, 0, pos) + "\\\\" + strsub(thing, pos + 1, strlen(thing)); //Remove and replace
+		//thing = strsub(thing, 0, pos) + "\\\\" + strsub(thing, pos + 1, strlen(thing)); //Remove and replace
+		thing = strsub(thing, 0, pos) + "\\" + strsub(thing, pos + 1, strlen(thing)); //Remove and replace
 		pos = strrchr(thing, '/'); //Look for the next forward slash
 	}
 	return(thing);
@@ -154,16 +155,23 @@ void createGerbers()
 	//Convert forward slashes to back slashes so we can run system commands
 	string projectDirectory = convertForwardToBackSlashes(get_project_path());
 	
-	string commandToRun = "cmd.exe /C echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
-	//string commandToRun = "cmd.exe /K echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
+	//string commandToRun = "cmd.exe /C echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
+	string commandToRun = "cmd.exe /K echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
 	string s = "";
 	
-	//We should remove all existing gerber files. There's a chance that a previous ULP job creates files that should not be zipped.
-	//sprintf(s, "del %s",
-	//		projectDirectory + baseFileName + ".GBP"
-	//);
-	//dlgMessageBox(s);
-	//commandToRun += " & " + s;
+    //Remove any files in the production folder left over from previous panel CAM
+	//There's a chance that a previous ULP job creates files that should not be zipped.
+	commandToRun += " & echo Removing old files";
+	sprintf(s, " del \"%s%s.G*\"", projectDirectory, baseFileName);
+	commandToRun += " & " + s;
+	sprintf(s, " del \"%s%s.TXT\"", projectDirectory, baseFileName);
+	commandToRun += " & " + s;
+	sprintf(s, " del \"%s%s.ZIP\"", projectDirectory, baseFileName);
+	commandToRun += " & " + s;
+	sprintf(s, " del \"%s%s.dri\"", projectDirectory, baseFileName);
+	commandToRun += " & " + s;
+	sprintf(s, " del \"%s%s.gpi\"", projectDirectory, baseFileName);
+	commandToRun += " & " + s;
 	
 	//Generate Gerbers
 	string fileExtension = "";
