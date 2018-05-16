@@ -170,8 +170,6 @@ void createGerbers()
 	commandToRun += " & " + s;
 	sprintf(s, " del \"%s%s.dri\"", projectDirectory, baseFileName);
 	commandToRun += " & " + s;
-	sprintf(s, " del \"%s%s.gpi\"", projectDirectory, baseFileName);
-	commandToRun += " & " + s;
 	
 	//Generate Gerbers
 	string fileExtension = "";

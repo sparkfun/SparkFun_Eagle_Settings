@@ -1,66 +1,141 @@
+#usage "en: <b>Create Footprint, Symbol, and Device for a Part Parametrically.</b> Enter the various dimensions of the pads, part outline, etc and this ULP generates the footprint, symbol, and device using SparkFun's standards. Save time and avoid doing the mundane. However, beware: This thing will shoot you in the foot and generate a very real, very wrong footprint. Use this script to save time starting your footprint but finish the footprint by hand checking it carefully against the datasheet. <br><br>Run the ULP from any schematic or board file. The default settings will generate a nice looking example. The ULP will also generate a settings file in the project directory of the project you ran it from. This allows you to re-run the ULP and nudge settings without having to re-enter them all."
+"<p>Usage: run sparkfun-partcreator</p>"
+"<p>Author: <author>Nathan Seidle &lt;inathan@sparkfun.com&gt;</author><br />"
+"Version: <em>1.0</em></p>"
 /*
-	This ULP parametrically creates footprints.
-
-	Beware: This thing will shoot you in the foot and generate a very real, very wrong footprint.
-	Use this script to save time starting your footprint but finish the footprint by hand checking
-	it carefully against the datasheet.
-
-	Run the ULP from any schematic or board file. The default settings will generate a nice looking
-	example. The ULP will also generate a settings file in the project directory of the project you
-	ran it from. This allows you to re-run the ULP and nudge settings without having to re-enter them all.
-
-	Designed to work in Eagle v7.7. May work in Eagle 8.
-
 	TODO:
-	Add bmp images of the various measurements to the GUI
-	Add INT pin to symbol options
+	Add Prod_ID record to device
 	Add warning to gyro/accel GUI, arrow directions are arbitrary, user must finish
 */
 
+string bigScript = "";
+
+//Config options we want to save
+string deviceName = "MMA8452Q";
 real partWidth = 3;
 real partHeight = 3;
+real padExternalExtension = 0.2;
+real padInset = 0.1;
 
-real padWidth = 0.7;
-real padHeight = 0.4;
+real padBackExtra = 0.05;
+real padWidth = 0.4;
 real padPitch = 0.5;
-real padExtension = 0.4;
-real distanceFromEdge = 0.1; //Distance the pad is from IC edge, either inset or outset
-real pinSizeX = 0.567; //Size of pins
-real pinSizeY = 0.300;
+real centerPadHeight = 0.0;
+real centerPadWidth = 0.0;
 
+int centerCreamSize = 25; //Percent of coverage
+int opt_padAlign = 1; //Either inset (0), edge align (1), or outset (2)
+int opt_gyroAccelAxis = 1; //Either no axis indicators(0), accel (1), both accel/gyro (1)
+int opt_pins_I2C = 1;
+int opt_pins_UART = 0;
+
+int opt_pins_SPI = 0;
+int opt_pins_RST = 0;
+int generateFootprint = 1;
+int generateSymbol = 1;
 int numberOfPads_Right = 5;
+
 int numberOfPads_Lower = 3;
 int numberOfPads_Left = 5;
 int numberOfPads_Upper = 3;
 int pin1Location = 3; //Top Right(0), Lower Right(1), Lower Left(2), Top Left(3)
 int padNumberingDirection = 1; //CW(0), CCW(1)
 
-real centerPadHeight = 0.0;
-real centerPadWidth = 0.0;
-int centerCreamSize = 25; //Percent of coverage
-
-int opt_padAlign = 1; //Either inset (0), edge align (1), or outset (2)
-
-int opt_gyroAccelAxis = 1; //Either no axis indicators(0), accel (1), both accel/gyro (1)
-
-int opt_pins_I2C = 1;
 int opt_pins_I2C_ADDR = 1;
-int opt_pins_UART = 0;
-int opt_pins_SPI = 0;
-int opt_pins_RST = 0;
-
-string deviceName = "MMA8452Q";
-
-int generateFootprint = 1;
-int generateSymbol = 1;
 int generateDevice = 1;
-
-string bigScript = "";
-string settingsFile = "partCreateSettings.txt";
+real pinSizeX = 0.567; //Size of pins
+real pinSizeY = 0.300;
+int opt_pins_INT = 1;
 
 string get_project_path() {
     if (board)     board(B)     return(filedir(B.name));
     if (schematic) schematic(B) return(filedir(B.name));
+}
+
+string configFile  = get_project_path() + "partCreateSettings.txt";
+
+void configRead() {
+	if(filesize(configFile)){ //Check if file exists
+		string data[];
+		int line = fileread(data, configFile);
+		if(line >= 4){
+			deviceName = data[0];
+			partWidth = strtod(data[1]);
+			partHeight = strtod(data[2]);
+			padExternalExtension = strtod(data[3]);
+			padInset = strtod(data[4]);
+
+			padBackExtra = strtod(data[5]);
+			padWidth = strtod(data[6]);
+			padPitch = strtod(data[7]);
+			centerPadHeight = strtod(data[8]);
+			centerPadWidth = strtod(data[9]);
+
+			centerCreamSize = strtol(data[10]);
+			opt_padAlign = strtol(data[11]);
+			opt_gyroAccelAxis = strtol(data[12]);
+			opt_pins_I2C = strtol(data[13]);
+			opt_pins_UART = strtol(data[14]);
+
+			opt_pins_SPI = strtol(data[15]);
+			opt_pins_RST = strtol(data[16]);
+			generateFootprint = strtol(data[17]);
+			generateSymbol = strtol(data[18]);
+			numberOfPads_Right = strtol(data[19]);
+
+			numberOfPads_Lower = strtol(data[20]);
+			numberOfPads_Left = strtol(data[21]);
+			numberOfPads_Upper = strtol(data[22]);
+			pin1Location = strtol(data[23]);
+			padNumberingDirection = strtol(data[24]);
+
+			opt_pins_I2C_ADDR = strtol(data[25]);
+			generateDevice = strtol(data[26]);
+			pinSizeX = strtod(data[27]);
+			pinSizeY = strtod(data[28]);
+			opt_pins_INT = strtol(data[29]);
+		}
+	}
+}
+
+void configWrite(){
+	output(configFile){
+		printf("%s\n", deviceName);
+		printf("%.5f\n", partWidth);
+		printf("%.5f\n", partHeight);
+		printf("%.5f\n", padExternalExtension);
+		printf("%.5f\n", padInset);
+
+		printf("%.5f\n", padBackExtra);
+		printf("%.5f\n", padWidth);
+		printf("%.5f\n", padPitch);
+		printf("%.5f\n", centerPadHeight);
+		printf("%.5f\n", centerPadWidth);
+
+		printf("%d\n", centerCreamSize);
+		printf("%d\n", opt_padAlign);
+		printf("%d\n", opt_gyroAccelAxis);
+		printf("%d\n", opt_pins_I2C);
+		printf("%d\n", opt_pins_UART);
+
+		printf("%d\n", opt_pins_SPI);
+		printf("%d\n", opt_pins_RST);
+		printf("%d\n", generateFootprint);
+		printf("%d\n", generateSymbol);
+		printf("%d\n", numberOfPads_Right);
+
+		printf("%d\n", numberOfPads_Lower);
+		printf("%d\n", numberOfPads_Left);
+		printf("%d\n", numberOfPads_Upper);
+		printf("%d\n", pin1Location);
+		printf("%d\n", padNumberingDirection);
+
+		printf("%d\n", opt_pins_I2C_ADDR);
+		printf("%d\n", generateDevice);
+		printf("%.5f\n", pinSizeX);
+		printf("%.5f\n", pinSizeY);
+		printf("%d\n", opt_pins_INT);
+	}
 }
 
 void createFile()
@@ -311,9 +386,10 @@ void createFootprint()
         if (currentSide < 0) currentSide += 4; //Wrap the variable
     }
 
-    if (opt_padAlign == 0) distanceFromEdge = abs(distanceFromEdge) * -1; //Pads are inset
+    /*if (opt_padAlign == 0) distanceFromEdge = abs(distanceFromEdge) * -1; //Pads are inset
     if (opt_padAlign == 1) distanceFromEdge = 0; //Pads are aligned with edge
     if (opt_padAlign == 2) distanceFromEdge = abs(distanceFromEdge); //Pads are outset
+	*/
 
     for (int pinNumber = 1 ; pinNumber < numberOfPads + 1 ; pinNumber++)
     {
@@ -361,14 +437,17 @@ void createFootprint()
             if (currentSide > 3) currentSide -= 4;
         }
 
+		real padLength = padExternalExtension + padInset + pinSizeX + padBackExtra; //Overall length of pad
+		real padOffset = padLength/2 - (padInset + pinSizeX + padBackExtra); //Find the offset of this pad in relation to the IC edge
+
         //Right edge
         if (currentSide == RIGHT_SIDE)
         {
             padRotation = 0;
-            padLocationX = partWidth/2.0 - padWidth/2.0;
-			pinLocationX = padLocationX - distanceFromEdge;
-            padLocationX += padExtension/2.0;
-            padLocationX += distanceFromEdge;
+
+			pinLocationX = partWidth/2.0 - padInset - pinSizeX/2;
+            padLocationX = partWidth/2.0  + padOffset;
+
             int padsPerSide = numberOfPads_Right;
 
             padLocationY = padPitch * ((padsPerSide/2) - sidePinsCompleted);
@@ -380,11 +459,10 @@ void createFootprint()
         else if (currentSide == LOWER_SIDE)
         {
             padRotation = 90;
-            padLocationY = partHeight/2.0 - padWidth/2.0;
-			pinLocationY = (padLocationY - distanceFromEdge) * -1;
-            padLocationY += padExtension/2.0;
-            padLocationY += distanceFromEdge;
-            padLocationY *= -1;
+
+			pinLocationY = partWidth/2.0 - padInset - pinSizeX/2;
+            padLocationY = partWidth/2.0  + padOffset;
+
             int padsPerSide = numberOfPads_Lower;
 
             padLocationX = padPitch * ((padsPerSide/2) - sidePinsCompleted);
@@ -396,11 +474,10 @@ void createFootprint()
         else if (currentSide == LEFT_SIDE)
         {
             padRotation = 180;
-            padLocationX = partWidth/2.0 - padWidth/2.0;
-			pinLocationX = (padLocationX - distanceFromEdge) * -1;;
-            padLocationX += padExtension/2.0;
-            padLocationX += distanceFromEdge;
-            padLocationX *= -1;
+
+			pinLocationX = (partWidth/2.0 - padInset - pinSizeX/2) * -1;
+            padLocationX = (partWidth/2.0  + padOffset) * -1;
+
             int padsPerSide = numberOfPads_Left;
 
             padLocationY = padPitch * ((padsPerSide/2) - sidePinsCompleted);
@@ -413,10 +490,10 @@ void createFootprint()
         else if (currentSide == UPPER_SIDE)
         {
             padRotation = 270;
-            padLocationY = partHeight/2.0 - padWidth/2.0;
-			pinLocationY = (padLocationY - distanceFromEdge);
-            padLocationY += padExtension/2.0;
-            padLocationY += distanceFromEdge;
+
+			pinLocationY = (partWidth/2.0 - padInset - pinSizeX/2) * -1;
+            padLocationY = (partWidth/2.0  + padOffset) * -1;
+
             int padsPerSide = numberOfPads_Upper;
 
             padLocationX = padPitch * ((padsPerSide/2) - sidePinsCompleted);
@@ -427,8 +504,8 @@ void createFootprint()
         }
 
         sprintf(s,"SMD %.4f %.4f -0 R%d '%d' (%.4f %.4f);\n",
-                padWidth + padExtension,
-                padHeight,
+                padLength,
+                padWidth,
                 padRotation,
                 pinNumber,
                 padLocationX,
@@ -485,6 +562,7 @@ void createFootprint()
 		bigScript += s; //Add center pad
 		
 		//Add cream rectangle for center pad
+		//We should really be taking the sqrt of creamSize(x*y), but this is good enough
 		bigScript += "LAYER 31;\n"; //Top cream
 		sprintf(s,"RECT (%.4f %.4f) (%.4f %.4f);\n",
 				(centerPadWidth*centerCreamSize/100.0)/2 *-1,
@@ -499,14 +577,14 @@ void createFootprint()
 		real pinRectangleX_Upper = 0 + (centerPadWidth / 2);
 		real pinRectangleY_Lower = 0 - (centerPadHeight / 2);
 		real pinRectangleY_Upper = 0 + (centerPadHeight / 2);
-		bigScript += "LAYER 51;\n"; //tDocu
+		//bigScript += "LAYER 51;\n"; //tDocu
 		sprintf(s,"RECT (%.4f %.4f) (%.4f %.4f);\n",
 				pinRectangleX_Lower,
 				pinRectangleY_Lower,
 				pinRectangleX_Upper,
 				pinRectangleY_Upper
 			   );
-		bigScript += s;
+		//bigScript += s;
 
 	}
 
@@ -576,6 +654,26 @@ void createSymbol()
             pinName = "VCC";
             pinLocationX = (symbolWidth/2.0 + 0.1) * -1;
             pinLocationY = (symbolHeight/2.0 - 0.1 + offset);
+        }
+        else if (opt_pins_RST == 1)
+        {
+            pinRotation = 180; //Right side
+            pinName = "!RST";
+            pinLocationX = (symbolWidth/2.0 + 0.1);
+            pinLocationY = nextAvailablePinY;
+            nextAvailablePinY -= 0.1;
+
+            opt_pins_RST = 0; //Mark as taken care of
+        }
+        else if (opt_pins_INT == 1)
+        {
+            pinRotation = 180; //Right side
+            pinName = "!INT";
+            pinLocationX = (symbolWidth/2.0 + 0.1);
+            pinLocationY = nextAvailablePinY;
+            nextAvailablePinY -= 0.1;
+
+            opt_pins_INT = 0; //Mark as taken care of
         }
         else if (opt_pins_I2C == 1)
         {
@@ -680,16 +778,6 @@ void createSymbol()
 
             opt_pins_SPI = 0; //Mark as taken care of
         }
-        else if (opt_pins_RST == 1)
-        {
-            pinRotation = 180; //Right side
-            pinName = "!RST";
-            pinLocationX = (symbolWidth/2.0 + 0.1);
-            pinLocationY = nextAvailablePinY;
-            nextAvailablePinY -= 0.1;
-
-            opt_pins_RST = 0; //Mark as taken care of
-        }
         else //All other pins
         {
             pinRotation = 180; //Right side
@@ -762,55 +850,13 @@ void createDevice()
 //Fancy GUI to get parameters from user
 void menu(void)
 {
-    //Look for a previous settings file
-    string a[];
-    string fileToFind = get_project_path() + settingsFile;
-    int n = fileglob(a, fileToFind);
-    if (n != 0)
-    {
-        //Settings are available so load them
-        string csv;
-        int nChars = fileread(csv, fileToFind);
-        string setting[];
-        int n = strsplit(setting, csv, ',');
-
-        deviceName = setting[0];
-        partWidth = strtod(setting[1]);
-        partHeight = strtod(setting[2]);
-        padWidth = strtod(setting[3]);
-        padHeight = strtod(setting[4]);
-        padPitch = strtod(setting[5]);
-        padExtension = strtod(setting[6]);
-        distanceFromEdge = strtod(setting[7]);
-        centerPadHeight = strtod(setting[8]);
-        centerPadWidth = strtod(setting[9]);
-        centerCreamSize = strtol(setting[10]);
-        opt_padAlign = strtol(setting[11]);
-        opt_gyroAccelAxis = strtol(setting[12]);
-        opt_pins_I2C = strtol(setting[13]);
-        opt_pins_UART = strtol(setting[14]);
-        opt_pins_SPI = strtol(setting[15]);
-        opt_pins_RST = strtol(setting[16]);
-        generateFootprint = strtol(setting[17]);
-        generateSymbol = strtol(setting[18]);
-        numberOfPads_Right = strtol(setting[19]);
-        numberOfPads_Lower = strtol(setting[20]);
-        numberOfPads_Left = strtol(setting[21]);
-        numberOfPads_Upper = strtol(setting[22]);
-        pin1Location = strtol(setting[23]);
-        padNumberingDirection = strtol(setting[24]);
-        opt_pins_I2C_ADDR = strtol(setting[25]);
-        generateDevice = strtol(setting[26]);
-        pinSizeX = strtod(setting[27]);
-        pinSizeY = strtod(setting[28]);
-    }
-
+	//Look for a previous settings file
+	configRead();
 
     int result = dlgDialog("SparkFun Part Creator" )
     {
 
         dlgLabel("<b>All dimensions are in mm</b>");
-        //dlgLabel("Test: <img src=test.bmp>");
 
         dlgHBoxLayout {
             dlgLabel("Device name or part # (ex: BME680, MLX90632, etc):");
@@ -818,139 +864,149 @@ void menu(void)
         }
 
         dlgTabWidget {
-
             dlgTabPage("&Footprint") {
-                dlgCheckBox("Generate Footprint for this Device", generateFootprint);
+                
+				dlgCheckBox("Generate Footprint for this Device", generateFootprint);
 
-                dlgGroup("Part Details") {
-                    dlgHBoxLayout {
-                        dlgGroup("Part Dimensions:") {
-                            dlgHBoxLayout {
-                                dlgLabel("Part width:");
-                                dlgRealEdit(partWidth, 0.1, 50.0);
-                            }
-                            dlgHBoxLayout {
-                                dlgLabel("Part Height:");
-                                dlgRealEdit(partHeight, 0.1, 50.0);
-                            }
-                        }
-                        dlgGroup("Pin Dimensions:") {
-                            dlgHBoxLayout {
-                                dlgLabel("Pin width:");
-                                dlgRealEdit(pinSizeX, 0.01, 5.0);
-                            }
-                            dlgHBoxLayout {
-                                dlgLabel("Pin Height:");
-                                dlgRealEdit(pinSizeY, 0.01, 5.0);
-                            }
-                        }
-                        dlgGroup("Pin 1 Location:") {
-                            dlgRadioButton("Top Right", pin1Location);
-                            dlgRadioButton("Lower Right", pin1Location);
-                            dlgRadioButton("Lower Left", pin1Location);
-                            dlgRadioButton("Top Left", pin1Location);
-                        }
-                        dlgGroup("Pad Numbering Direction") {
-                            dlgRadioButton("CW", padNumberingDirection);
-                            dlgRadioButton("CCW", padNumberingDirection);
-                        }
-                    }
-                }
-                dlgGroup("Pad Info") {
-                    dlgHBoxLayout {
-                        dlgGroup("Num of pads:") {
-                            dlgHBoxLayout {
-                                dlgLabel("Right edge:");
-                                dlgIntEdit(numberOfPads_Right, 0, 200);
-                            }
-                            dlgHBoxLayout {
-                                dlgLabel("Lower edge:");
-                                dlgIntEdit(numberOfPads_Lower, 0, 200);
-                            }
-                            dlgHBoxLayout {
-                                dlgLabel("Left edge:");
-                                dlgIntEdit(numberOfPads_Left, 0, 200);
-                            }
-                            dlgHBoxLayout {
-                                dlgLabel("Upper edge:");
-                                dlgIntEdit(numberOfPads_Upper, 0, 200);
-                            }
-                        }
-                        dlgGroup("Center Pad:") {
-                            dlgLabel("Leave zeros in place if this part has no center pad");
-                            dlgHBoxLayout {
-                                dlgLabel("Width:");
-                                dlgRealEdit(centerPadWidth, 0, 10.0);
-                            }
-                            dlgHBoxLayout {
-                                dlgLabel("Height:");
-                                dlgRealEdit(centerPadHeight, 0, 10.0);
-                            }
-                            dlgLabel("Paste aperture as % of pad:");
-                            dlgHBoxLayout {
-                                dlgLabel("(Less than 50% is recommended)");
-                                dlgIntEdit(centerCreamSize, 0, 150);
-                            }
-                        }
-                    }
-                }
-                dlgGroup("Pads") {
-                    dlgHBoxLayout {
-                        dlgGroup("Dimensions") {
-                            dlgHBoxLayout {
-                                dlgLabel("Width:");
-                                dlgRealEdit(padWidth, 0.1, 10.0);
-                            }
-                            dlgHBoxLayout {
-                                dlgLabel("Height:");
-                                dlgRealEdit(padHeight, 0.1, 10.0);
-                            }
-                            dlgHBoxLayout {
-                                dlgLabel("Pitch:");
-                                dlgRealEdit(padPitch, 0.1, 10.0);
-                            }
-                        }
-                        dlgGroup("Alignment") {
-                            dlgRadioButton("Inset pads", opt_padAlign);
-                            dlgRadioButton("Align to IC edge", opt_padAlign);
-                            dlgRadioButton("Pads external to IC edge", opt_padAlign);
-                            dlgHBoxLayout {
-                                dlgLabel("Distance from edge:");
-                                dlgRealEdit(distanceFromEdge, 0, 10.0);
-                            }
-                        }
-                        dlgGroup("Add Pad Extension") {
-                            dlgLabel("For leadless devices this extends pads\npast edge of IC boundary\nto make rework easier");
-                            dlgHBoxLayout {
-                                dlgLabel("Pad length extension:");
-                                dlgRealEdit(padExtension, 0.0, 10.0);
-                            }
-                        }
-                    }
-                }
-                dlgGroup("IMU Axis Indicators") {
-                    dlgRadioButton("Add none", opt_gyroAccelAxis);
-                    dlgRadioButton("Add accel arrows", opt_gyroAccelAxis);
-                    dlgRadioButton("Add gyro/accel combined arrows", opt_gyroAccelAxis);
+                dlgGroup("Dimensions") {
+					dlgTabWidget {
+						dlgTabPage("Part Dimensions") {
+							dlgHBoxLayout {
+								dlgLabel("<img src=help-images/PartCreator-Pin-Size.bmp>");
+								dlgGroup("Part Dimensions:") {
+									dlgHBoxLayout {
+										dlgLabel("Part <b>X</b>:");
+										dlgRealEdit(partWidth, 0.1, 50.0);
+									}
+									dlgHBoxLayout {
+										dlgLabel("Part <b>Y</b>:");
+										dlgRealEdit(partHeight, 0.1, 50.0);
+									}
+								}
+								dlgGroup("Pin Dimensions:") {
+									dlgHBoxLayout {
+										dlgLabel("Pin Length (<b>L</b>):");
+										dlgRealEdit(pinSizeX, 0.01, 5.0);
+									}
+									dlgHBoxLayout {
+										dlgLabel("Pin Height (<b>H</b>):");
+										dlgRealEdit(pinSizeY, 0.01, 5.0);
+									}
+								}
+								dlgGroup("Pin 1 Location:") {
+									dlgRadioButton("Top Right", pin1Location);
+									dlgRadioButton("Lower Right", pin1Location);
+									dlgRadioButton("Lower Left", pin1Location);
+									dlgRadioButton("Top Left", pin1Location);
+								}
+								dlgGroup("Pad Numbering Direction") {
+									dlgRadioButton("CW", padNumberingDirection);
+									dlgRadioButton("CCW", padNumberingDirection);
+								}
+							}
+						}
+
+
+						dlgTabPage("Pad Dimensions") {
+							dlgHBoxLayout {
+								dlgLabel("<img src=help-images/PartCreator-Pad-Distances.bmp>");
+								dlgGroup("Pad Dimensions:") {
+									dlgHBoxLayout {
+                //dlgStretch(1);
+				//dlgSpacing(40);
+										dlgLabel("External Extension <b>A</b>:");
+										dlgRealEdit(padExternalExtension, -5.0, 10.0);
+									}
+									dlgHBoxLayout {
+										dlgLabel("Inset <b>B</b>:");
+										dlgRealEdit(padInset, -5.0, 10.0);
+									}
+									dlgHBoxLayout {
+										dlgLabel("Extra <b>C</b>:");
+										dlgRealEdit(padBackExtra, -5.0, 10.0);
+									}
+									dlgHBoxLayout {
+										dlgLabel("Pad Width <b>D</b>:");
+										dlgRealEdit(padWidth, 0.1, 10.0);
+									}
+									dlgHBoxLayout {
+										dlgLabel("Pitch:");
+										dlgRealEdit(padPitch, 0.1, 10.0);
+									}
+								}
+							}
+						}
+
+						dlgTabPage("Pad Count") {
+							dlgHBoxLayout {
+								dlgGroup("Num of pads:") {
+									dlgHBoxLayout {
+										dlgLabel("Right edge:");
+										dlgIntEdit(numberOfPads_Right, 0, 200);
+									}
+									dlgHBoxLayout {
+										dlgLabel("Lower edge:");
+										dlgIntEdit(numberOfPads_Lower, 0, 200);
+									}
+									dlgHBoxLayout {
+										dlgLabel("Left edge:");
+										dlgIntEdit(numberOfPads_Left, 0, 200);
+									}
+									dlgHBoxLayout {
+										dlgLabel("Upper edge:");
+										dlgIntEdit(numberOfPads_Upper, 0, 200);
+									}
+								}
+							}
+						}
+
+						dlgTabPage("Center Pad") {
+							dlgHBoxLayout {
+								dlgLabel("<img src=help-images/PartCreator-Center-Pad.bmp>");
+
+								dlgGroup("Center Pad:") {
+									dlgLabel("Leave zeros in place if this part has no center pad");
+									dlgHBoxLayout {
+										dlgLabel("Width:");
+										dlgRealEdit(centerPadWidth, 0, 10.0);
+									}
+									dlgHBoxLayout {
+										dlgLabel("Height:");
+										dlgRealEdit(centerPadHeight, 0, 10.0);
+									}
+									dlgLabel("Paste aperture as % of pad:");
+									dlgHBoxLayout {
+										dlgLabel("(Less than 50% is recommended)");
+										dlgIntEdit(centerCreamSize, 0, 150);
+									}
+								}
+							}
+						}
+
+						dlgTabPage("IMU Axis Indicators") {
+							dlgHBoxLayout {
+								dlgLabel("<img src=help-images/PartCreator-Axis-Indicators.bmp>");
+								dlgRadioButton("Add none", opt_gyroAccelAxis);
+								dlgRadioButton("Add accel arrows", opt_gyroAccelAxis);
+								dlgRadioButton("Add gyro/accel combined arrows", opt_gyroAccelAxis);
+							}
+						}
+						
+					}
                 }
             }
 
             dlgTabPage("&Symbol") {
-                dlgStretch(1);
                 dlgCheckBox("Generate Symbol for this Device", generateSymbol);
-                dlgStretch(1);
                 dlgGroup("Features on Device") {
-                    dlgStretch(1);
+                    dlgCheckBox("!RST", opt_pins_RST);
+                    dlgCheckBox("!INT", opt_pins_INT);
                     dlgCheckBox("UART", opt_pins_UART);
                     dlgGroup("I2C") {
-                        dlgStretch(1);
                         dlgCheckBox("I2C", opt_pins_I2C);
                         dlgCheckBox("Address Pin", opt_pins_I2C_ADDR);
                     }
-                    dlgStretch(1);
                     dlgCheckBox("SPI", opt_pins_SPI);
-                    dlgCheckBox("RST", opt_pins_RST);
-                    dlgSpacing(600);
                 }
             }
             dlgTabPage("&Device") {
@@ -964,6 +1020,7 @@ void menu(void)
             dlgPushButton("+OK") {                dlgAccept(1);            };
             dlgPushButton("-Cancel") {                dlgReject(0);            };
         }
+		
     };
 
 
@@ -971,50 +1028,10 @@ void menu(void)
         exit (0);
 
     //Record settings to file
-    string fileName = get_project_path() + settingsFile;
-    output(fileName) {
-        string settings = "";
-        sprintf(settings, "%s, \
-                %0.2f, %0.2f, %0.2f, %0.2f, %0.2f, %0.2f, %0.2f, %0.2f, %0.2f, %d, \
-                %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, \
-                %d, %d, %d, %d, %d, %d, %0.3f, %0.3f",
-                deviceName,
-
-                partWidth,
-                partHeight,
-                padWidth,
-                padHeight,
-                padPitch,
-                padExtension,
-                distanceFromEdge,
-                centerPadHeight,
-                centerPadWidth,
-                centerCreamSize,
-
-                opt_padAlign,
-                opt_gyroAccelAxis,
-                opt_pins_I2C,
-                opt_pins_UART,
-                opt_pins_SPI,
-                opt_pins_RST,
-                generateFootprint,
-                generateSymbol,
-                numberOfPads_Right,
-                numberOfPads_Lower,
-
-                numberOfPads_Left,
-                numberOfPads_Upper,
-                pin1Location,
-                padNumberingDirection,
-                opt_pins_I2C_ADDR,
-                generateDevice,
-                pinSizeX,
-                pinSizeY
-               );
-        printf(settings);
-    }
+    configWrite();
 
     //Error checking
+	/*
     if (opt_padAlign == 0 && distanceFromEdge == 0.0)
     {
         dlgMessageBox("Pads are inset but no distance was defined");
@@ -1025,6 +1042,7 @@ void menu(void)
         dlgMessageBox("Pads are outset but no distance was defined");
         exit(0);
     }
+	*/
 
     createFile();
 
