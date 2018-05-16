@@ -386,11 +386,6 @@ void createFootprint()
         if (currentSide < 0) currentSide += 4; //Wrap the variable
     }
 
-    /*if (opt_padAlign == 0) distanceFromEdge = abs(distanceFromEdge) * -1; //Pads are inset
-    if (opt_padAlign == 1) distanceFromEdge = 0; //Pads are aligned with edge
-    if (opt_padAlign == 2) distanceFromEdge = abs(distanceFromEdge); //Pads are outset
-	*/
-
     for (int pinNumber = 1 ; pinNumber < numberOfPads + 1 ; pinNumber++)
     {
         real padLocationX = 0;
@@ -1029,20 +1024,6 @@ void menu(void)
 
     //Record settings to file
     configWrite();
-
-    //Error checking
-	/*
-    if (opt_padAlign == 0 && distanceFromEdge == 0.0)
-    {
-        dlgMessageBox("Pads are inset but no distance was defined");
-        exit(0);
-    }
-    if (opt_padAlign == 2 && distanceFromEdge == 0.0)
-    {
-        dlgMessageBox("Pads are outset but no distance was defined");
-        exit(0);
-    }
-	*/
 
     createFile();
 
