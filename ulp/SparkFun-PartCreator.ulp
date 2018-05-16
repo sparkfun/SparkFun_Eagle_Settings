@@ -371,16 +371,20 @@ void createFootprint()
     if (numberOfPads_Lower > 0) numberOfSides++;
     if (numberOfPads_Upper > 0) numberOfSides++;
 
-    //Start from pin 1 location
+	//These are defines to increase readability
     int RIGHT_SIDE = 0;
     int LOWER_SIDE = 1;
     int LEFT_SIDE = 2;
     int UPPER_SIDE = 3;
+	int CW = 0;
+	int CCW = 1;
+
+    //Start from pin 1 location
     int currentSide = pin1Location; //Top Right(0), Lower Right(1), Lower Left(2), Top Left(3)
     int sidePinsCompleted = 0;
 
     //Initial side adjustment for CCW from pin 1
-    if (padNumberingDirection == 1)
+    if (padNumberingDirection == CCW)
     {
         currentSide--; //Go to next side CCW
         if (currentSide < 0) currentSide += 4; //Wrap the variable
@@ -399,26 +403,26 @@ void createFootprint()
         {
             if (currentSide == RIGHT_SIDE && sidePinsCompleted == numberOfPads_Right)
             {
-                if (padNumberingDirection == 0) currentSide++; //Go to next side CW
-                if (padNumberingDirection == 1) currentSide--; //Go to next side CCW
+                if (padNumberingDirection == CW) currentSide++; //Go to next side CW
+                if (padNumberingDirection == CCW) currentSide--; //Go to next side CCW
                 sidePinsCompleted = 0;
             }
             else if (currentSide == LOWER_SIDE && sidePinsCompleted == numberOfPads_Lower)
             {
-                if (padNumberingDirection == 0) currentSide++; //Go to next side CW
-                if (padNumberingDirection == 1) currentSide--; //Go to next side CCW
+                if (padNumberingDirection == CW) currentSide++; //Go to next side CW
+                if (padNumberingDirection == CCW) currentSide--; //Go to next side CCW
                 sidePinsCompleted = 0;
             }
             else if (currentSide == LEFT_SIDE && sidePinsCompleted == numberOfPads_Left)
             {
-                if (padNumberingDirection == 0) currentSide++; //Go to next side CW
-                if (padNumberingDirection == 1) currentSide--; //Go to next side CCW
+                if (padNumberingDirection == CW) currentSide++; //Go to next side CW
+                if (padNumberingDirection == CCW) currentSide--; //Go to next side CCW
                 sidePinsCompleted = 0;
             }
             else if (currentSide == UPPER_SIDE && sidePinsCompleted == numberOfPads_Upper)
             {
-                if (padNumberingDirection == 0) currentSide++; //Go to next side CW
-                if (padNumberingDirection == 1) currentSide--; //Go to next side CCW
+                if (padNumberingDirection == CW) currentSide++; //Go to next side CW
+                if (padNumberingDirection == CCW) currentSide--; //Go to next side CCW
                 sidePinsCompleted = 0;
             }
             else
@@ -447,7 +451,7 @@ void createFootprint()
 
             padLocationY = padPitch * ((padsPerSide/2) - sidePinsCompleted);
             if (padsPerSide % 2 == 0) padLocationY -= padPitch * 0.5; //Adjust for even number of pads
-            if (padNumberingDirection == 1) padLocationY *= -1; //Reverse direction for CCW pin numbering
+            if (padNumberingDirection == CCW) padLocationY *= -1; //Reverse direction for CCW pin numbering
 			pinLocationY = padLocationY;
         }
         //Bottom edge
@@ -455,14 +459,14 @@ void createFootprint()
         {
             padRotation = 90;
 
-			pinLocationY = partWidth/2.0 - padInset - pinSizeX/2;
-            padLocationY = partWidth/2.0  + padOffset;
+			pinLocationY = (partWidth/2.0 - padInset - pinSizeX/2) * -1;
+            padLocationY = (partWidth/2.0  + padOffset) * -1;
 
             int padsPerSide = numberOfPads_Lower;
 
             padLocationX = padPitch * ((padsPerSide/2) - sidePinsCompleted);
             if (padsPerSide % 2 == 0) padLocationX -= padPitch * 0.5; //Adjust for even number of pads
-            if (padNumberingDirection == 1) padLocationX *= -1; //Reverse direction for CCW pin numbering
+            if (padNumberingDirection == CCW) padLocationX *= -1; //Invert coordinates for CCW pin numbering
 			pinLocationX = padLocationX;
         }
         //Left edge
@@ -478,7 +482,7 @@ void createFootprint()
             padLocationY = padPitch * ((padsPerSide/2) - sidePinsCompleted);
             if (padsPerSide % 2 == 0) padLocationY -= padPitch * 0.5; //Adjust for even number of pads
             padLocationY *= -1;
-            if (padNumberingDirection == 1) padLocationY *= -1; //Reverse direction for CCW pin numbering
+            if (padNumberingDirection == CCW) padLocationY *= -1; //Reverse direction for CCW pin numbering
 			pinLocationY = padLocationY;
         }
         //Top edge
@@ -486,15 +490,17 @@ void createFootprint()
         {
             padRotation = 270;
 
-			pinLocationY = (partWidth/2.0 - padInset - pinSizeX/2) * -1;
-            padLocationY = (partWidth/2.0  + padOffset) * -1;
+			pinLocationY = partWidth/2.0 - padInset - pinSizeX/2;
+            padLocationY = partWidth/2.0  + padOffset;
 
             int padsPerSide = numberOfPads_Upper;
 
             padLocationX = padPitch * ((padsPerSide/2) - sidePinsCompleted);
             if (padsPerSide % 2 == 0) padLocationX -= padPitch * 0.5; //Adjust for even number of pads
+
             padLocationX *= -1;
-            if (padNumberingDirection == 1) padLocationX *= -1; //Reverse direction for CCW pin numbering
+            if (padNumberingDirection == CCW) padLocationX *= -1; //Invert coordinates for CCW pin numbering
+
 			pinLocationX = padLocationX;
         }
 
@@ -506,7 +512,7 @@ void createFootprint()
                 padLocationX,
                 padLocationY
                );
-        bigScript += s; //Add pads
+        bigScript += s; //Add this SMD pad
 
 		//Add a rectangle in tDocu to represent where physical pin will land on pad
 		real pinRectangleX_Lower;
@@ -543,6 +549,7 @@ void createFootprint()
         sidePinsCompleted++;
     }
 
+	
     //Add center pad
 	if(centerPadHeight > 0 && centerPadWidth > 0)
 	{
@@ -907,8 +914,6 @@ void menu(void)
 								dlgLabel("<img src=help-images/PartCreator-Pad-Distances.bmp>");
 								dlgGroup("Pad Dimensions:") {
 									dlgHBoxLayout {
-                //dlgStretch(1);
-				//dlgSpacing(40);
 										dlgLabel("External Extension <b>A</b>:");
 										dlgRealEdit(padExternalExtension, -5.0, 10.0);
 									}
