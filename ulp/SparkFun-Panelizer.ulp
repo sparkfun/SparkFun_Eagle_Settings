@@ -9,9 +9,7 @@ string bigScript = ""; //The big string of commands that we will eventually run 
 
 /*
 	TODO
-	
 	Add radio button that swaps between mm and inch in GUI
-
 */
 
 string configFile  = filesetext(argv[0], ".cfg");

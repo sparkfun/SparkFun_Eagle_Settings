@@ -143,6 +143,13 @@ string convertForwardToBackSlashes(string thing)
 	return(thing);
 }
 
+//Returns true if a file exists
+int FileExists(string name)
+{
+     string files[];
+     return (fileglob(files, name) != 0);
+}
+
 //CAM the current BRD file
 void createGerbers()
 {
@@ -162,15 +169,36 @@ void createGerbers()
     //Remove any files in the production folder left over from previous panel CAM
 	//There's a chance that a previous ULP job creates files that should not be zipped.
 	commandToRun += " & echo Removing old files";
-	sprintf(s, " del \"%s%s.G*\"", projectDirectory, baseFileName);
-	commandToRun += " & " + s;
-	sprintf(s, " del \"%s%s.TXT\"", projectDirectory, baseFileName);
-	commandToRun += " & " + s;
-	sprintf(s, " del \"%s%s.ZIP\"", projectDirectory, baseFileName);
-	commandToRun += " & " + s;
-	sprintf(s, " del \"%s%s.dri\"", projectDirectory, baseFileName);
-	commandToRun += " & " + s;
+
+	string fileLocation = "";
+	sprintf(fileLocation, "%s%s.G*", get_project_path(), baseFileName); //Search for file using forward slashes
+	if(FileExists(fileLocation))
+	{
+		sprintf(s, "del \"%s%s.G*\"", projectDirectory, baseFileName); //Remove file with back slashes
+		commandToRun += " & " + s;
+	}
+
+	sprintf(fileLocation, "%s%s.TXT", get_project_path(), baseFileName);
+	if(FileExists(fileLocation))
+	{
+		sprintf(s, "del \"%s%s.TXT\"", projectDirectory, baseFileName);
+		commandToRun += " & " + s;
+	}
 	
+	sprintf(fileLocation, "%s%s.ZIP", get_project_path(), baseFileName);
+	if(FileExists(fileLocation))
+	{
+		sprintf(s, "del \"%s%s.ZIP\"", projectDirectory, baseFileName);
+		commandToRun += " & " + s;
+	}
+
+	sprintf(fileLocation, "%s%s.dri", get_project_path(), baseFileName);
+	if(FileExists(fileLocation))
+	{
+		sprintf(s, "del \"%s%s.dri\"", projectDirectory, baseFileName);
+		commandToRun += " & " + s;
+	}
+
 	//Generate Gerbers
 	string fileExtension = "";
 	string layerNumbers = "";
