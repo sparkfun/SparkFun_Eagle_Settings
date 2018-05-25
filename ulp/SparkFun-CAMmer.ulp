@@ -352,7 +352,7 @@ void createGerbers()
 			fileList += " \"" + projectDirectory + baseFileName + ".GBP" + "\"";
 		}
 			
-		sprintf(s, "%s a \"%s\" %s",
+		sprintf(s, "\"%s\" a \"%s\" %s",
 			sevenZaLocation,
 			outputFileName,
 			fileList
