@@ -621,51 +621,62 @@ void calculateDesignDimensions()
 	real overhang_yMin = yMin;
 	board(B) {
 		B.elements(E) {
-			E.package.wires(C) {
-
-				real wx1 = u2inch(C.x1);
-				real wy1 = u2inch(C.y1);
-				real wx2 = u2inch(C.x2);
-				real wy2 = u2inch(C.y2);
-				
-				if(wx1 > overhang_xMax)
-				{
-					overhang_xMax = wx1;
-				}
-				if(wx1 < overhang_xMin)
-				{
-					overhang_xMin = wx1;
-				}
-				if(wy1 > overhang_yMax)
-				{
-					overhang_yMax = wy1;
-				}
-				if(wy1 < overhang_yMin)
-				{
-					overhang_yMin = wy1;
-				}
-
-				if(wx2 > overhang_xMax)
-				{
-					overhang_xMax = wx2;
-				}
-				if(wx2 < overhang_xMin)
-				{
-					overhang_xMin = wx2;
-				}
-				if(wy2 > overhang_yMax)
-				{
-					overhang_yMax = wy2;
-				}
-				if(wy2 < overhang_yMin)
-				{
-					overhang_yMin = wy2;
-				}
+		
+			//There are some elements we need to ignore, for example the
+			//Special instruction box is all tDocu and always far outside the board outline
+			if(E.package.name == "ORDERING_INSTRUCTIONS")
+			{
+				//Ignore the location of this element
 			}
-		}
+			else{
+				//Evaluate where this element resides
+			
+				E.package.wires(C) {
+
+					real wx1 = u2inch(C.x1);
+					real wy1 = u2inch(C.y1);
+					real wx2 = u2inch(C.x2);
+					real wy2 = u2inch(C.y2);
+					
+					if(wx1 > overhang_xMax)
+					{
+						overhang_xMax = wx1;
+					}
+					if(wx1 < overhang_xMin)
+					{
+						overhang_xMin = wx1;
+					}
+					if(wy1 > overhang_yMax)
+					{
+						overhang_yMax = wy1;
+					}
+					if(wy1 < overhang_yMin)
+					{
+						overhang_yMin = wy1;
+					}
+
+					if(wx2 > overhang_xMax)
+					{
+						overhang_xMax = wx2;
+					}
+					if(wx2 < overhang_xMin)
+					{
+						overhang_xMin = wx2;
+					}
+					if(wy2 > overhang_yMax)
+					{
+						overhang_yMax = wy2;
+					}
+					if(wy2 < overhang_yMin)
+					{
+						overhang_yMin = wy2;
+					}
+				}//End E.package.wires
+			}//End ignore list
+		}//End Elements
 
     }
-
+	
 	designWidth = xMax - xMin; //In inches
 	designHeight = yMax - yMin;
 
@@ -686,7 +697,6 @@ void calculateDesignDimensions()
 		horizontalGapNeeded = overhangHeight - designHeight;
 	}
 }
-
 string get_project_path() {
     if (board)     board(B)     return(filedir(B.name));
     if (schematic) schematic(B) return(filedir(B.name));
@@ -818,6 +828,9 @@ if (board)
 			dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This board has overhanging parts\t"); } 
 			if(verticalGapNeeded > 0)
 			{
+				//PCBWay requires 3mm minimum for route-out areas
+				if(verticalGapNeeded > 0.02 && verticalGapNeeded < 0.12) verticalGapNeeded = 0.12;
+
 				string s = "";
 				sprintf(s, "Recommended Vertical Gap for Overhang: %.2f", verticalGapNeeded);
 				dlgHBoxLayout{ dlgLabel(s); } 
@@ -825,6 +838,9 @@ if (board)
 
 			if(horizontalGapNeeded > 0)
 			{
+				//PCBWay requires 3mm minimum for route-out areas
+				if(horizontalGapNeeded > 0.02 && horizontalGapNeeded < 0.12) horizontalGapNeeded = 0.12;
+
 				string s = "";
 				sprintf(s, "Recommended Horizontal Gap for Overhang: %.2f", horizontalGapNeeded);
 				dlgHBoxLayout{ dlgLabel(s); } 
@@ -866,6 +882,10 @@ if (board)
 		}
 
 		dlgPushButton("Generate") {
+
+			if( (horizontalGap > 0.02 && horizontalGap < 0.12) || (verticalGap > 0.02 && verticalGap < 0.12) )
+				dlgMessageBox("PCBWay requires 0.12\" or 3mm min distance for route outs. This panel may fail review.");
+
 			configWrite(); //Record current settings
 			
 			panelizer(); //Create the panel

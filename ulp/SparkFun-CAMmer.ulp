@@ -27,6 +27,7 @@ int outputGerbers = 1;
 int outputTopStencil = 1;
 int outputBottomStencil = 1;
 int zipOutput = 1;
+int runGerbV = 1;
 	
 void configWrite(){
   output(configFile){
@@ -34,6 +35,7 @@ void configWrite(){
     printf("%d\n", outputTopStencil);
     printf("%d\n", outputBottomStencil);
     printf("%d\n", zipOutput);
+    printf("%d\n", runGerbV);
   }
 }
 
@@ -45,7 +47,8 @@ void configRead() {
       outputGerbers			= strtol(data[0]);
       outputTopStencil		= strtol(data[1]);
       outputBottomStencil	= strtol(data[2]);
-      zipOutput				= strtol(data[3]);
+      zipOutput					= strtol(data[3]);
+      runGerbV					= strtol(data[4]);
     }
   }
 }
@@ -322,9 +325,9 @@ void createGerbers()
 		sevenZaLocation += "\\7za.exe";
 		
 		string outputFileName = projectDirectory + baseFileName + ".zip";
-		string fileList ="";
 		
 		//Get all the wanted files
+		string fileList ="";
 		fileList += "\"" + projectDirectory + baseFileName + ".GTL" + "\"";
 		fileList += " \"" + projectDirectory + baseFileName + ".GTO" + "\"";
 		fileList += " \"" + projectDirectory + baseFileName + ".GTS" + "\"";
@@ -359,6 +362,49 @@ void createGerbers()
 			);
 		
 		commandToRun += " & " + s;
+	}
+	
+	if(runGerbV == 1)
+	{
+		string gerbVLocation = convertForwardToBackSlashes(filedir(argv[0]));
+		gerbVLocation += "\\gerbv.exe";
+		
+		//Get all the wanted files
+		string fileList ="";
+		fileList += "\"" + projectDirectory + baseFileName + ".GTL" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GTO" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GTS" + "\"";
+
+		fileList += " \"" + projectDirectory + baseFileName + ".GBL" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GBO" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GBS" + "\"";
+
+		if(hasInternalLayers() == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GL2" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL3" + "\"";
+		}
+
+		fileList += " \"" + projectDirectory + baseFileName + ".GKO" + "\"";
+		
+		fileList += " \"" + projectDirectory + baseFileName + ".TXT" + "\""; //Get drill file
+
+		if(outputTopStencil == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GTP" + "\"";
+		}
+		if(outputBottomStencil == 1 && hasBottomParts() == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GBP" + "\"";
+		}
+			
+		sprintf(s, "\"%s\" %s",
+			gerbVLocation,
+			fileList
+			);
+		
+		commandToRun += " & " + s;
+		
 	}
 	
 	//dlgMessageBox(commandToRun);
@@ -406,6 +452,8 @@ if (board)
 			dlgHBoxLayout{ dlgCheckBox("Bottom Stencil", outputBottomStencil); } 
 			dlgHBoxLayout{ dlgCheckBox("Zip Output Files", zipOutput); } 
 		}
+
+		dlgHBoxLayout{ dlgCheckBox("Run gerbV upon completion", runGerbV); } 
 
 		dlgPushButton("Generate") {
 			configWrite(); //Record current settings
