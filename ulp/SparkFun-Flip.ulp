@@ -29,7 +29,7 @@ void flip() {
 	
     //Mirror everything around the mid point of this design
     string s = "";
-	sprintf(s, "MIRROR (>%.2f 0);\n", xMax/2);
+	sprintf(s, "MIRROR (>%.5f 0);\n", xMax/2);
     bigScript += s;
 	
 	//Return grid to original settings
