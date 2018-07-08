@@ -302,7 +302,7 @@ void createGerbers()
 		if(x == 9) device = "EXCELLON_24"; //Drill file
 
 		mirror = "-m-"; //No mirror
-		if(x == 8) mirror = "-m+"; //Mirror the bottom paste layer
+		//if(x == 8) mirror = "-m+"; //Mirror the bottom paste layer
 		
 		//Add this CAM operation to the list
 		sprintf(s, " \"%s\" -X -N- %s -f+ -O+ -c+ -x0 -y0 -d%s -o \"%s.%s\" \"%s\" %s",
