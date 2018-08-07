@@ -9,7 +9,6 @@ string bigScript = ""; //The big string of commands that we will eventually run 
 
 /*
 	TODO
-	Add radio button that swaps between mm and inch in GUI
 */
 
 string configFile  = filesetext(argv[0], ".cfg");
@@ -24,6 +23,8 @@ int		drawPanelBorders 	= 0;
 int 		runCAM					= 0;
 int 		generateTopStencil = 0;
 int 		generateBottomStencil = 0;
+int			panelUnits = 0; //Default to inches
+int 		panelMustBeLargerThanDimension = 0; //Default to 'must be less than'
 
 void configWrite(){
   output(configFile){
@@ -36,6 +37,8 @@ void configWrite(){
     printf("%d\n", runCAM);
 	printf("%d\n", generateTopStencil);
 	printf("%d\n", generateBottomStencil);
+	printf("%d\n", panelUnits);
+	printf("%d\n", panelMustBeLargerThanDimension);
   }
 }
 
@@ -53,6 +56,8 @@ void configRead() {
       runCAM					= strtol(data[6]);
       generateTopStencil	= strtol(data[7]);
       generateBottomStencil	= strtol(data[8]);
+	  panelUnits					= strtol(data[9]);
+	  panelMustBeLargerThanDimension				= strtol(data[10]);
     }
   }
 }
@@ -256,6 +261,7 @@ string getBoardColor()
 	return("Unknown");
 }
 
+//Assumes all variables have been set to inch units
 void panelizer() {
 	
     string s = "";
@@ -264,11 +270,17 @@ void panelizer() {
 	if(drawPanelBorders == 1) borderWidth = 0.25;
 
 	//Calculate the number of copies we need to achieve our min panel size
-	numberOfColumns = ceil(panelSizeX / (designWidth + verticalGap));
-	if(numberOfColumns * (designWidth + verticalGap) + verticalGap < panelSizeX) numberOfColumns++;
+	while( (numberOfColumns * (designWidth + verticalGap) + verticalGap) + (borderWidth * 2) < panelSizeX) numberOfColumns++;
+	while( (numberOfRows * (designHeight + horizontalGap) + horizontalGap)  + (borderWidth * 2) < panelSizeY) numberOfRows++;
+	if(panelMustBeLargerThanDimension == 0)
+	{
+		 numberOfColumns--;
+		 numberOfRows--;
+	}
+
 	
-	numberOfRows = ceil(panelSizeY / (designHeight + horizontalGap));
-	if(numberOfRows * (designHeight + horizontalGap) + horizontalGap < panelSizeY) numberOfRows++;
+	//numberOfRows = ceil(panelSizeY / (designHeight + horizontalGap));
+	//if(numberOfRows * (designHeight + horizontalGap) + horizontalGap < panelSizeY) numberOfRows++;
 	
 	panelWidth = (designWidth + verticalGap) * numberOfColumns - verticalGap;
 	panelWidth += borderWidth * 2;
@@ -697,6 +709,7 @@ void calculateDesignDimensions()
 		horizontalGapNeeded = overhangHeight - designHeight;
 	}
 }
+
 string get_project_path() {
     if (board)     board(B)     return(filedir(B.name));
     if (schematic) schematic(B) return(filedir(B.name));
@@ -804,6 +817,24 @@ void orderingInstructionsWrite()
 	
 }
 
+//Convert a number of inches to mm
+real convertInchToMM(real inches)
+{
+	real mm = inches / 0.039370;
+	int partialMM = (mm * 100 + .5);
+	mm = partialMM / 100.0;
+	return(mm);
+}
+
+//Convert a number of mm to inches
+real convertMMToInches(real mm)
+{
+	real inches = mm * 0.039370;
+	int partialInches = (inches * 100 + .5);
+	inches = partialInches / 100.0;
+	return(inches);	
+}
+
 
 if (board)
 {
@@ -816,10 +847,32 @@ if (board)
 	//GUI
     int dstatus = dlgDialog("Panel Generation Options"){
 
-		dlgLabel("All dimensions in inches");
+		dlgGroup("Dimensions") {
+            dlgRadioButton("Inches", panelUnits)
+			{
+				//Convert vars to inches
+				panelSizeX = convertMMToInches(panelSizeX);
+				panelSizeY = convertMMToInches(panelSizeY);
+				verticalGap = convertMMToInches(verticalGap);
+				horizontalGap = convertMMToInches(horizontalGap);
+				dlgRedisplay();
+			}
+            dlgRadioButton("Millimeters", panelUnits)
+			{
+				//Convert vars to mm
+				panelSizeX = convertInchToMM(panelSizeX);
+				panelSizeY = convertInchToMM(panelSizeY);
+				verticalGap = convertInchToMM(verticalGap);
+				horizontalGap = convertInchToMM(horizontalGap);
+				dlgRedisplay();
+			}
+		}
 		dlgGroup("Panel Size") {
-			dlgHBoxLayout{ dlgLabel("X:\t");       dlgRealEdit(panelSizeX, 1, 20); } 
-			dlgHBoxLayout{ dlgLabel("Y:\t");       dlgRealEdit(panelSizeY, 1, 20); } 
+			dlgRadioButton("Must be smaller than", panelMustBeLargerThanDimension);
+			dlgRadioButton("Must be larger than", panelMustBeLargerThanDimension);
+			
+			dlgHBoxLayout{ dlgLabel("X:\t");       dlgRealEdit(panelSizeX, 1, 600); } 
+			dlgHBoxLayout{ dlgLabel("Y:\t");       dlgRealEdit(panelSizeY, 1, 600); } 
 		}
 		dlgGroup("Gaps") {
 
@@ -887,6 +940,16 @@ if (board)
 				dlgMessageBox("PCBWay requires 0.12\" or 3mm min distance for route outs. This panel may fail review.");
 
 			configWrite(); //Record current settings
+			
+			//Before we begin, make sure the incoming units are in inches
+			if(panelUnits == 1) //User input mm
+			{
+				//Convert panel units from mm to inches
+				panelSizeX = convertMMToInches(panelSizeX);
+				panelSizeY = convertMMToInches(panelSizeY);
+				verticalGap = convertMMToInches(verticalGap);
+				horizontalGap = convertMMToInches(horizontalGap);
+			}
 			
 			panelizer(); //Create the panel
 
