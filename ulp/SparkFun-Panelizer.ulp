@@ -132,6 +132,7 @@ int hasPartsOnLayer(int layerNumber)
 						&& containsString(E.package.name, "NC_BY_TRACE") == 0
 						&& containsString(E.package.name, "SJ_2S-NO") == 0
 						&& containsString(E.package.name, "SMT-JUMPER") == 0
+						&& containsString(E.package.name, "USB-MICROB-PTH-MILL") == 0
 						) 
 					{
 						//String not found, this is a legit part
