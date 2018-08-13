@@ -84,6 +84,9 @@ string panelFileLocation = "";
 
 string bottomPackages = "";
 
+int false = 0;
+int true = 1;
+
 //Finds a string in a string no matter where, no matter capitalization
 int containsString(string toSearch, string toFind)
 {
@@ -835,14 +838,69 @@ real convertMMToInches(real mm)
 	return(inches);	
 }
 
+//Check for unrouted nets
+//Returns true if board has unrouted nets
+int unroutedNets(void)
+{
+	int unroutedNets = false;
 
+	if (board) {
+		board(B) {
+			B.signals(S) {
+				S.wires(W) {
+					if (W.layer == 19) unroutedNets = true;
+				} 
+			}
+		}
+		
+		if(unroutedNets == true)
+			return(true);
+	}	
+	return(false);
+}
+
+//This is the main function
 if (board)
 {
 	configRead(); //Read any settings if available
+	
+	//Check this design for unrouted nets
+	if(unroutedNets() == true)
+	{
+		string warning = "!This design has unrouted nets! Are you sure you want to continue?";
+		
+		if( dlgMessageBox(warning, "&Yes", "&No") == 1) {
+			//Bail
+			exit(1);
+		} 
+	}
 
 	createFile(); //Create a \Panel sub directory, overwrite any existing panel files
 
 	calculateDesignDimensions(); //Detect any overhanging parts. It will set designWidth/designHeight
+	
+	
+	string horizontalGapString = "";
+	string verticalGapString = "";
+
+	//We have to create the strings before the GUI is loaded
+	if(panelUnits == 0) //Inches
+	{
+		if(verticalGapNeeded > 0.02 && verticalGapNeeded < 0.12) verticalGapNeeded = 0.12;
+		if(horizontalGapNeeded > 0.02 && horizontalGapNeeded < 0.12) horizontalGapNeeded = 0.12;
+	}
+	else
+	{
+		verticalGapNeeded = convertInchToMM(verticalGapNeeded);
+		horizontalGapNeeded = convertInchToMM(horizontalGapNeeded);
+		if(verticalGapNeeded > 0.51 && verticalGapNeeded < 3) verticalGapNeeded = 3;
+		if(horizontalGapNeeded > 0.51 && horizontalGapNeeded < 3) horizontalGapNeeded = 3;
+	}
+		
+	sprintf(verticalGapString, "Recommended Vertical Gap for Overhang: %.2f", verticalGapNeeded);
+	sprintf(horizontalGapString, "Recommended Horizontal Gap for Overhang: %.2f", horizontalGapNeeded);
+
+
 	
 	//GUI
     int dstatus = dlgDialog("Panel Generation Options"){
@@ -855,6 +913,15 @@ if (board)
 				panelSizeY = convertMMToInches(panelSizeY);
 				verticalGap = convertMMToInches(verticalGap);
 				horizontalGap = convertMMToInches(horizontalGap);
+				verticalGapNeeded = convertMMToInches(verticalGapNeeded);
+				horizontalGapNeeded = convertMMToInches(horizontalGapNeeded);
+
+				//PCBWay & JLCPCB requires 3mm minimum for route-out areas
+				if(verticalGapNeeded > 0.02 && verticalGapNeeded < 0.12) verticalGapNeeded = 0.12;
+				if(horizontalGapNeeded > 0.02 && horizontalGapNeeded < 0.12) horizontalGapNeeded = 0.12;
+				sprintf(verticalGapString, "Recommended Vertical Gap for Overhang: %.2f", verticalGapNeeded);
+				sprintf(horizontalGapString, "Recommended Horizontal Gap for Overhang: %.2f", horizontalGapNeeded);
+
 				dlgRedisplay();
 			}
             dlgRadioButton("Millimeters", panelUnits)
@@ -864,6 +931,15 @@ if (board)
 				panelSizeY = convertInchToMM(panelSizeY);
 				verticalGap = convertInchToMM(verticalGap);
 				horizontalGap = convertInchToMM(horizontalGap);
+				verticalGapNeeded = convertInchToMM(verticalGapNeeded);
+				horizontalGapNeeded = convertInchToMM(horizontalGapNeeded);
+
+				//PCBWay & JLCPCB requires 3mm minimum for route-out areas
+				if(verticalGapNeeded > 0.51 && verticalGapNeeded < 3) verticalGapNeeded = 3;
+				if(horizontalGapNeeded > 0.51 && horizontalGapNeeded < 3) horizontalGapNeeded = 3;
+				sprintf(verticalGapString, "Recommended Vertical Gap for Overhang: %.2f", verticalGapNeeded);
+				sprintf(horizontalGapString, "Recommended Horizontal Gap for Overhang: %.2f", horizontalGapNeeded);
+
 				dlgRedisplay();
 			}
 		}
@@ -879,29 +955,20 @@ if (board)
 		if(overHangingParts == "true")
 		{
 			dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This board has overhanging parts\t"); } 
+			dlgHBoxLayout{ dlgLabel("PCBWay & JLCPCB: 3mm min routeout gap\t"); } 
 			if(verticalGapNeeded > 0)
 			{
-				//PCBWay requires 3mm minimum for route-out areas
-				if(verticalGapNeeded > 0.02 && verticalGapNeeded < 0.12) verticalGapNeeded = 0.12;
-
-				string s = "";
-				sprintf(s, "Recommended Vertical Gap for Overhang: %.2f", verticalGapNeeded);
-				dlgHBoxLayout{ dlgLabel(s); } 
+				dlgHBoxLayout{ dlgLabel(verticalGapString, 1); }  //Change with redisplay
 			}
 
 			if(horizontalGapNeeded > 0)
 			{
-				//PCBWay requires 3mm minimum for route-out areas
-				if(horizontalGapNeeded > 0.02 && horizontalGapNeeded < 0.12) horizontalGapNeeded = 0.12;
-
-				string s = "";
-				sprintf(s, "Recommended Horizontal Gap for Overhang: %.2f", horizontalGapNeeded);
-				dlgHBoxLayout{ dlgLabel(s); } 
+				dlgHBoxLayout{ dlgLabel(horizontalGapString, 1); }  //Change with redisplay
 			}
 		}
 
-		dlgHBoxLayout{ dlgLabel("Vertical Gap:\t");         	dlgRealEdit(verticalGap, 0.0, 2); } 
-		dlgHBoxLayout{ dlgLabel("Horizontal Gap:\t");       	dlgRealEdit(horizontalGap, 0.0, 2); } 
+		dlgHBoxLayout{ dlgLabel("Vertical Gap:\t");         	dlgRealEdit(verticalGap, 0.0, 15); } 
+		dlgHBoxLayout{ dlgLabel("Horizontal Gap:\t");       	dlgRealEdit(horizontalGap, 0.0, 15); } 
 		}
 		  
 		dlgGroup("Extra Production Bits") {
