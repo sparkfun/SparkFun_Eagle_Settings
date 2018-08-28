@@ -66,22 +66,38 @@ int containsString(string toSearch, string toFind)
 }
 
 //Detect if board has four layers
-//Returns 0 if not found
-int hasInternalLayers()
+//This was re-written to scan only for signal wires on internals layers becaused things like a microB connector uses polygons on layers 2/15
+int hasFourLayers()
 {
-	board(B) {
+	//Old way
+	/*board(B) {
 		B.layers(L) {
-			if(L.used && L.number == 2)
+			if(L.used  == 1 && L.number == 2)
 			{
 				return(1);
 			}
-			if(L.used && L.number == 15)
+			if(L.used == 1 && L.number == 15)
 			{
 				return(1);
 			}
 		}
+	}*/
+	
+	board(B) {
+		B.signals(S)
+		{
+			S.wires(W) {
+				if(W.layer == 2)
+				{
+					return(1);
+				}
+				if(W.layer == 15)
+				{
+					return(1);
+				}
+			}
+		}
 	}
-
 	return(0); //Nope
 }
 
@@ -283,7 +299,7 @@ void createGerbers()
 		else if(x == 10) //Inner layer 2
 		{
 			if(outputGerbers == 0) continue;
-			if(hasInternalLayers() == 0) continue;
+			if(hasFourLayers() == 0) continue;
 			fileExtension = "GL2";
 			layerNumbers = "2 17 18";
 			commandToRun += " & echo Running Layer 2";
@@ -291,7 +307,7 @@ void createGerbers()
 		else if(x == 11) //Inner layer 15
 		{
 			if(outputGerbers == 0) continue;
-			if(hasInternalLayers() == 0) continue;
+			if(hasFourLayers() == 0) continue;
 			fileExtension = "GL3";
 			layerNumbers = "15 17 18";
 			commandToRun += " & echo Running Layer 15";
@@ -336,7 +352,7 @@ void createGerbers()
 		fileList += " \"" + projectDirectory + baseFileName + ".GBO" + "\"";
 		fileList += " \"" + projectDirectory + baseFileName + ".GBS" + "\"";
 
-		if(hasInternalLayers() == 1)
+		if(hasFourLayers() == 1)
 		{
 			fileList += " \"" + projectDirectory + baseFileName + ".GL2" + "\"";
 			fileList += " \"" + projectDirectory + baseFileName + ".GL3" + "\"";
@@ -379,7 +395,7 @@ void createGerbers()
 		fileList += " \"" + projectDirectory + baseFileName + ".GBO" + "\"";
 		fileList += " \"" + projectDirectory + baseFileName + ".GBS" + "\"";
 
-		if(hasInternalLayers() == 1)
+		if(hasFourLayers() == 1)
 		{
 			fileList += " \"" + projectDirectory + baseFileName + ".GL2" + "\"";
 			fileList += " \"" + projectDirectory + baseFileName + ".GL3" + "\"";
@@ -427,7 +443,7 @@ if (board)
 
 		dlgHBoxLayout{ dlgSpacing(300); } 
 		
-		if(hasInternalLayers() == 1)
+		if(hasFourLayers() == 1)
 		{
 			dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This is a four layer board\t"); } 
 		}

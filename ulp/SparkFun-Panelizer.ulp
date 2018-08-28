@@ -100,17 +100,35 @@ int containsString(string toSearch, string toFind)
 }
 
 //Detect if board has four layers
+//This was re-written to scan only for signal wires on internals layers becaused things like a microB connector uses polygons on layers 2/15
 int hasFourLayers()
 {
-	board(B) {
+	//Old way
+	/*board(B) {
 		B.layers(L) {
-			if(L.used && L.number == 2)
+			if(L.used  == 1 && L.number == 2)
 			{
 				return(1);
 			}
-			if(L.used && L.number == 15)
+			if(L.used == 1 && L.number == 15)
 			{
 				return(1);
+			}
+		}
+	}*/
+	
+	board(B) {
+		B.signals(S)
+		{
+			S.wires(W) {
+				if(W.layer == 2)
+				{
+					return(1);
+				}
+				if(W.layer == 15)
+				{
+					return(1);
+				}
 			}
 		}
 	}
