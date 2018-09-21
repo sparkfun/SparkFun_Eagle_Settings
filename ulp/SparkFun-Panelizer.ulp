@@ -867,7 +867,7 @@ int unroutedNets(void)
 		board(B) {
 			B.signals(S) {
 				S.wires(W) {
-					if (W.layer == 19) unroutedNets = true;
+					if (W.layer == LAYER_UNROUTED) unroutedNets = true;
 				} 
 			}
 		}
