@@ -69,7 +69,7 @@ void configRead() {
   }
 }
 
-real copyOversizeAmount = 0.1;
+real copyOversizeAmount = 0.5;
 real designWidth; //In inches
 real designHeight;
 real xMax = 0;
