@@ -322,8 +322,8 @@ void createGerbers()
 		//if(x == 8) mirror = "-m+"; //Mirror the bottom paste layer
 		
 		//Add this CAM operation to the list
-		sprintf(s, " \"%s\" -X -N- %s -f+ -O+ -c+ -x0 -y0 -d%s -o \"%s.%s\" \"%s\" %s",
-			EAGLE_PATH,
+		sprintf(s, " \"%s/eagle.exe\" -X -N- %s -f+ -O+ -c+ -x0 -y0 -d%s -o \"%s.%s\" \"%s\" %s",
+			EAGLE_DIR,
 			mirror,
 			device,
 			baseFileName, 
@@ -362,6 +362,8 @@ void createGerbers()
 		fileList += " \"" + projectDirectory + baseFileName + ".GKO" + "\"";
 		
 		fileList += " \"" + projectDirectory + baseFileName + ".TXT" + "\""; //Get drill file
+
+		fileList += " \"" + projectDirectory + "ordering_instructions.txt" + "\""; //Send the ordering instructions as an extra precaution
 
 		if(outputTopStencil == 1)
 		{

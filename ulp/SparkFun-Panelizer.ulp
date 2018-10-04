@@ -8,8 +8,15 @@
 string bigScript = ""; //The big string of commands that we will eventually run as a script
 
 /*
+	The following command, run from a command prompt, will open eagle and run it against a board
+	
+"C:\EAGLE 9.1.2\eagle.exe" -C "run C:\Users\OldLenny\Dropbox\Projects\SparkFun_Eagle_Settings\ulp\sparkfun-panelizer.ulp;" "C:\Users\OldLenny\Dropbox\Projects\Battery_Babysitter\Hardware\sparkfun-battery-babysitter.brd"
+
+	
+	
 	TODO
-*/
+
+	*/
 
 string configFile  = filesetext(argv[0], ".cfg");
 
@@ -608,33 +615,17 @@ void calculateDesignDimensions()
                     yMin = wy1;
                 }
                 else {
-                    if (wx1 > xMax) {
-                        xMax = wx1;
-                    }
-                    if (wx1 < xMin) {
-                        xMin = wx1;
-                    }
-                    if (wy1 > yMax) {
-                        yMax = wy1;
-                    }
-                    if (wy1 < yMin) {
-                        yMin = wy1;
-                    }
+                    if (wx1 > xMax) xMax = wx1;
+                    if (wx1 < xMin) xMin = wx1;
+                    if (wy1 > yMax) yMax = wy1;
+                    if (wy1 < yMin) yMin = wy1;
                 }
 
                 // End point of wire
-                if (wx2 > xMax) {
-                    xMax = wx2;
-                }
-                if (wx2 < xMin) {
-                    xMin = wx2;
-                }
-                if (wy2 > yMax) {
-                    yMax = wy2;
-                }
-                if (wy2 < yMin) {
-                    yMin = wy2;
-                }
+                if (wx2 > xMax) xMax = wx2;
+                if (wx2 < xMin) xMin = wx2;
+                if (wy2 > yMax) yMax = wy2;
+                if (wy2 < yMin) yMin = wy2;
             }
 		}
 	}
@@ -672,39 +663,15 @@ void calculateDesignDimensions()
 					real wx2 = u2inch(C.x2);
 					real wy2 = u2inch(C.y2);
 					
-					if(wx1 > overhang_xMax)
-					{
-						overhang_xMax = wx1;
-					}
-					if(wx1 < overhang_xMin)
-					{
-						overhang_xMin = wx1;
-					}
-					if(wy1 > overhang_yMax)
-					{
-						overhang_yMax = wy1;
-					}
-					if(wy1 < overhang_yMin)
-					{
-						overhang_yMin = wy1;
-					}
+					if(wx1 > overhang_xMax)	overhang_xMax = wx1;
+					if(wx1 < overhang_xMin) overhang_xMin = wx1;
+					if(wy1 > overhang_yMax) overhang_yMax = wy1;
+					if(wy1 < overhang_yMin) overhang_yMin = wy1;
 
-					if(wx2 > overhang_xMax)
-					{
-						overhang_xMax = wx2;
-					}
-					if(wx2 < overhang_xMin)
-					{
-						overhang_xMin = wx2;
-					}
-					if(wy2 > overhang_yMax)
-					{
-						overhang_yMax = wy2;
-					}
-					if(wy2 < overhang_yMin)
-					{
-						overhang_yMin = wy2;
-					}
+					if(wx2 > overhang_xMax)	overhang_xMax = wx2;
+					if(wx2 < overhang_xMin)	overhang_xMin = wx2;
+					if(wy2 > overhang_yMax)	overhang_yMax = wy2;
+					if(wy2 < overhang_yMin)	overhang_yMin = wy2;
 				}//End E.package.wires
 			}//End ignore list
 		}//End Elements
@@ -878,10 +845,39 @@ int unroutedNets(void)
 	return(false);
 }
 
+//Starting in eagle v8, the group command changed. These scripts rely on being able
+//to precisely control the group command. If the "ground command default on" is checked,
+//then the scripts fail because the group command is too close to the board edge and eagle
+//automatically goes to a move command. This function reads the current state, stores the 
+//user's setting in a global for future reset, and then disables the setting.
+int usersGroupCommandSetting;
+void setGroupDefault()
+{
+	/*
+	We attempt to read the setting here but it's not documented
+	board(B) {
+		usersGroupCommandSetting = B.groupdefault;
+	}
+	
+	//run C:\Users\OldLenny\Dropbox\Projects\SparkFun_Eagle_Settings\ulp\sparkfun-panelizer.ulp
+	string s;
+	sprintf(s, "Setting: %d", userGroupCommandSetting);
+	dlgMessageBox(s);
+	exit(0);
+	
+	bigScript += "SET GROUP_DEFAULT OFF;\n"; //Not documented but works
+	
+
+
+	*/
+}
+
 //This is the main function
 if (board)
 {
 	configRead(); //Read any settings if available
+	
+	setGroupDefault(); //Remember, then turn off the "Group default command on" setting
 	
 	//Check this design for unrouted nets
 	if(unroutedNets() == true)
@@ -1020,7 +1016,7 @@ if (board)
 			dlgHBoxLayout{ dlgCheckBox("Run CAM after panelization", runCAM); } 
 		}
 
-		dlgPushButton("Generate") {
+		dlgPushButton("&Generate") {
 
 			if( (horizontalGap > 0.02 && horizontalGap < 0.12) || (verticalGap > 0.02 && verticalGap < 0.12) )
 				dlgMessageBox("PCBWay requires 0.12\" or 3mm min distance for route outs. This panel may fail review.");
