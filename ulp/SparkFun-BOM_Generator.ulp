@@ -42,6 +42,8 @@ int element_status_unknown = 0;
 // Master lists
 string prod_ids[];
 string package_names[];
+string values[];
+string names[];
 int quantities[];
 int element_status[];
 int numElements = 0;
@@ -135,7 +137,7 @@ void categorizeElements()
 	for(int indi = 0; indi < numElements; indi++)
 	{
 		string temp = "";
-		sprintf(temp, "%d\t%s\t%s", quantities[indi], prod_ids[indi], package_names[indi]);
+		sprintf(temp, "%d\t%s\t%s\t%s", quantities[indi], prod_ids[indi], package_names[indi], names[indi]);
 		if(element_status[indi] == element_status_valid){
 			validlistarry[validCount] = temp;
 			valid_index_map[validCount] = indi;
@@ -167,6 +169,8 @@ if(board)
 
 			string element_prod_id = E.attribute["PROD_ID"];
 			string element_package_name = E.package.name;
+			string element_value = E.attribute["Value"];
+			string element_name = E.name;
 
 			int match = 0;
 			int indi = 0;
@@ -188,6 +192,8 @@ if(board)
 					prod_ids[numElements] = element_prod_id;
 					package_names[numElements] = element_package_name;
 					quantities[numElements] = 1;
+					values[numElements] = element_value;
+					names[numElements] = element_name;
 					element_status[numElements] = element_status_valid;
 					numElements++;
 				}
@@ -208,6 +214,8 @@ if(board)
 					prod_ids[numElements] = "";
 					package_names[numElements] = element_package_name;
 					quantities[numElements] = 1;
+					values[numElements] = element_value;
+					names[numElements] = element_name;
 					element_status[numElements] = element_status_invalid;
 					numElements++;
 				}
@@ -231,8 +239,8 @@ if(board)
 					}
 					dlgHBoxLayout {
 
-						dlgListView("Qty\tPROD_ID\tPackage", validlistarry, validSelected, validSort);
-						dlgListView("Qty\tPROD_ID\tPackage", invalidlistarry, invalidSelected, invalidSort);
+						dlgListView("Qty\tPROD_ID\tPackage\tExample Name", validlistarry, validSelected, validSort);
+						dlgListView("Qty\tPROD_ID\tPackage\tExample Name", invalidlistarry, invalidSelected, invalidSort);
 					}
 					dlgHBoxLayout {
 
