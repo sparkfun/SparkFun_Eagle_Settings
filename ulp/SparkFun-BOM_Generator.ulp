@@ -1,240 +1,279 @@
+#usage "en: <b>Outputs the contents of a design to Sparkle Friendly list</b> "
+"<p>Usage: run SparkFun-BOM_Generator</p>"
+"<p>Author: <author>Owen Lyke, Nathan Seidle &lt;owen.lyke@sparkfun.com&gt;</author><br />"
+"Version: <em>1.0</em></p>"
+
+
+/*
+
 #usage "en: <b>Outputs the contents of a design to Sparkle Friendly list</b> PCBWay requires the user to create panels that are at least 75x75mm. If the panel is smaller than this they will reject it because their v-score machine can't handle it. This ULP takes a given design and replicates it until the panel is just over the dimensions specified by the user. It also adds dimension lines between copies and v-score text so that PCBWay knows where to v-score. This script will also detect overhanging parts and warn the user that gaps are needed. Script tries to identify the soldermask color based on the logos on the board (SparkFun vs SparkX vs LilyPad). Script looks for 0.8mm tag for thin boards. Script outputs a ordering_instructions.txt file containing all the characteristics of this panel."
 "<p>Usage: run bom_sparkle</p>"
 "<p>Author: <author>Nathan Seidle &lt;inathan@sparkfun.com&gt;</author><br />"
 "Version: <em>1.0</em></p>"
 
-//Qty, SKU, Description
-//This output, along with a build sheet, is handy for Production when setting up the pick and place machine
-//Mark parts with no Prod-ID
+*/
 
-//CSV of production IDs in a text box
-//This output is handy when entering BOMs into Sparkle
 
-//TODO Add support for PTH parts
+// Modified October 2018, Owen Lyke
+/*
 
-//Main method for creating searchable lists of strings
-//https://github.com/sparkfunX/Desktop-PickAndPlace-CHMT36VA/blob/1ee665d34516afad8c6f67a0673c987d52c927f7/Eagle-Conversion/ConvertToCharm.ulp#L60
+Modification goals: 
+- improve detection of false positives (a part that is on the board but doesn't exactly match a production part that can be used)
+	* previous method was to search the part name and make sure it included the value
 
-#include "Include_String.ulp" //Has stringTrim
+- output a format that sparkle can handle to automatically set the quantity (this depends on SWIT adding this functionality in sparkle first)
+	* currently in-progress, requires SWIT support but can be easily adapted into the output format when needed
 
-int foundParts = 0;
-string partNames[];
-string partIDs[];
-int partQty[];
-int mismatchPartValues = 0;
-string mismatchParts = "";
+- improve detetion of on-board vs no-package components
+	* answered by allowing the user to flag entries as "BOM" or "Non-BOM" while still not missing any board elements
+	* also looping through boad elements as opposed to schematic elements helps
 
-//There are a lot of schematic parts that are not mounted to the PCB
-//These lists of words help ignore the correct parts
-//Be careful adding new words. It can cause valid components to get ignored.
-string noMount_WholeWordMatch = "5V, 3.3V, 2.8V, GND, VIN, VCCIO";
-string noMount_PartialWordMatch = "LOGO, TESTPOINT, FRAME, FIDUCIAL, JUMPER, I2C_STANDARD, CONN_, STAND-OFF";
+*/
 
-//Search for match between word_1 and word_2. Looks for comma delimited lists in word_2
-//Returns true if found
-int wholeWordMatch(string wordToFind_1, string wordToFind_2)
+
+string ulpName = "SparkFun-BOM_Generator";
+int setup_complete = 0;
+int redraw = 1;
+
+int element_status_valid = 1;
+int element_status_invalid = 2; 
+int element_status_unknown = 0;
+
+// Master lists
+string prod_ids[];
+string package_names[];
+int quantities[];
+int element_status[];
+int numElements = 0;
+
+
+// These two sets of lists are generated from the master lists above
+string invalidlistarry[];
+int invalidSort = 0;
+int invalidSelected = -1;
+int invalid_index_map[];
+
+
+string validlistarry[];
+int validSort = 0;
+int validSelected = -1;
+int valid_index_map[];
+
+int validCount = 0;
+int invalidCount = 0;
+
+// A string for sparkle output
+string sparkleBOM;
+
+
+string pidFormat(string id_str)
 {
-	//Make everything lowercase
-	wordToFind_1 = strlwr(wordToFind_1);
-	wordToFind_2 = strlwr(wordToFind_2);
-	
-    //Treat wordToFind_2 as a possible list
-    string aliases[];
-    int cnt = strsplit(aliases, wordToFind_2, ','); //aliases[] is now loaded with separated list
-	for(int k = 0; k < cnt; k++){
-
-		if(stringTrim(aliases[k]) != "") //The strsplit above returns records with zero length, ignore them
-		{
-			//Check if word_1 is word_2
-			if(wordToFind_1 == stringTrim(aliases[k])) {
-				//Found!
-				return(1);
-			}
-		}
-    }
-	
-	return(0); //Not found
-}
-
-//Search for word_1 in word_2. Looks for comma delimited lists as well
-//Returns true if found
-int partialWordMatch(string wordToFind_1, string wordToFind_2)
-{
-	//Make everything lowercase
-	wordToFind_1 = strlwr(wordToFind_1);
-	wordToFind_2 = strlwr(wordToFind_2);
-	
-    //Treat wordToFind_2 as a possible list
-    string aliases[];
-    int cnt = strsplit(aliases, wordToFind_2, ','); //aliases[] is now loaded with separated list
-	for(int k = 0; k < cnt; k++){
-
-		if(stringTrim(aliases[k]) != "") //The strsplit above returns records with zero length, ignore them
-		{
-			//Check if word_1 is inside one of the aliases
-			int pos = strstr(stringTrim(aliases[k]), wordToFind_1);
-			if(pos != -1){ //Found!
-				return(1);
-			}
-	  
-			//Check if this alias is inside word_1
-			pos = strstr(wordToFind_1, stringTrim(aliases[k]));
-			if(pos != -1){ //Found!
-				return(1);
-			}
-		}
-    }
-	
-	return(0); //No found
-}
-
-int partIsMounted(string partName)
-{
-	if(partialWordMatch(partName, noMount_PartialWordMatch) == 1) return(0); //Part is a no mount part
-	if(wholeWordMatch(partName, noMount_WholeWordMatch) == 1) return(0); //Part is a no mount part
-	return(1); //This part is good to mount
-}
-
-//Step through devices on board
-void loadBoardInformation() {
-	
-	//Walk through all parts in the schematic
-	schematic(SCH) {
-		SCH.parts(P) {
-			string partName = P.device.name;
-			string partProdID = "";
-
-			int attributeCount = 0;
-			P.attributes (A)
-			{
-				//First A.value is the PROD_ID
-				//Next A.value is RED, or 0.1uF (the value box on the part)
-				
-				if(attributeCount == 0)
-				{
-					partProdID = A.value;
-				}
-				attributeCount++;
-			}
-
-			//Detect if this part name has a noMountPart within it
-			if(partIsMounted(partName))
-			{
-				//Check to see if a 10K part has a 2.2K value (user modified a part instead of adding the correct part)
-				if(partialWordMatch(partName, P.value) == 0)
-				{
-					//Value not found in partName
-					mismatchPartValues = 1; //We have a mismatch!
-					mismatchParts += partName + ", " + P.value + "\n";
-				}
-					
-
-				//Detect if this partName is new or if we already have it
-				
-				//Search the array of partNames
-				int found = 0;
-				for(int x = 0 ; x < foundParts ; x++)
-				{
-					if(partNames[x] == partName)
-					{
-						found = 1;
-						partQty[x]++;
-						break;
-					}
-				}
-				if(found == 0) //New part!
-				{
-					partQty[foundParts] = 1;
-					partNames[foundParts] = partName;
-					
-					if(partProdID == "") partProdID = "No Prod ID";
-					partIDs[foundParts] = partProdID;
-					
-					foundParts++;
-				}
-			}
-		}
+	string numeral_entries[];
+	int numEntries = strsplit(numeral_entries, id_str, '-');
+	if(numEntries < 2)
+	{
+		// dlgMessageBox("Too few entries found in the product id");
+		return "NaN";
 	}
+	string numerals = numeral_entries[1];
+	while(numerals[0] == '0')
+	{
+		string t = strsub(numerals, 1, strlen(numerals));
+		numerals = t;
+	}
+
+	return numerals;
 }
 
-if (schematic) {
-	
-	loadBoardInformation();
-	
-	//Put list together
-	string allParts = "Qty, PROD_ID, Description\n";
-	for(int x = 0 ; x < foundParts ; x++)
+void generateSparkleList()
+{
+	int invalidPIDcount = 0;
+	sparkleBOM = "";
+	for(int indi = 0; indi < validCount; indi++)
 	{
 		string temp = "";
-		sprintf(temp, "%d, %s, %s\n", partQty[x], partIDs[x], partNames[x]);
-		allParts += temp;
-	}
-
-	if(mismatchPartValues == 1)
-	{
-		allParts += "\nThere are mismatched parts:\n";
-		allParts += mismatchParts;
-	}
-
-	//Put raw Sparkle BOM together
-	//This is a list of just partIDs with no leading letters or numbers: 810, 12544, etc.
-	//This list is easily pasted into the Sparkle BOM tab
-	string sparkleBOM = "";
-	for(x = 0 ; x < foundParts ; x++)
-	{
-		//Sparkle only wants the numeric value, cut off all the alpha bits
-		string myBits[];
-		strsplit(myBits, partIDs[x], '-');
-		
-		if(strlen(myBits[1]) > 0)
+		string prod_id = prod_ids[valid_index_map[indi]];
+		string idNUM = pidFormat(prod_id);
+		if(idNUM == "NaN"){
+			invalidPIDcount++;
+		}
+		else if(indi < (validCount - 1))
 		{
-			//We have a valid partID
+			sprintf(temp, "%s,", idNUM);
+		}
+		else
+		{
+			sprintf(temp, "%s", idNUM);
+		}
+		sparkleBOM += temp;
+	}
 
-			//We now have something like 09804 in myBits[1]
-			//Remove leading zero (jeesh sparkle!)
-			while(myBits[1][0] == '0')
+	if(invalidPIDcount)
+	{
+		string msg = "";
+		sprintf(msg, "Warning: %d items in BOM list without PROD_ID", invalidPIDcount);
+		dlgMessageBox(msg);
+	}
+}
+
+void categorizeElements()
+{
+	// Clear out the old lists
+	for(int indk = 0; indk < validCount; indk++){
+		validlistarry[indk] = "";
+	}
+	for(int indj = 0; indj < invalidCount; indj++)
+	{
+		invalidlistarry[indj] = "";
+	}
+
+	// Reset the counters
+	validCount = 0;
+	invalidCount = 0;
+
+	// Recategorize the elements from the master lists
+	for(int indi = 0; indi < numElements; indi++)
+	{
+		string temp = "";
+		sprintf(temp, "%d\t%s\t%s", quantities[indi], prod_ids[indi], package_names[indi]);
+		if(element_status[indi] == element_status_valid){
+			validlistarry[validCount] = temp;
+			valid_index_map[validCount] = indi;
+			validCount++;
+		}
+		else if(element_status[indi] == element_status_invalid)
+		{
+			invalidlistarry[invalidCount] = temp;
+			invalid_index_map[invalidCount] = indi;
+			invalidCount++;
+		}
+		else{
+			// Problems have arisen
+		}
+	}
+
+	generateSparkleList();
+}
+
+
+if(schematic)
+{
+	exit("edit .brd; run " + ulpName);
+}
+if(board)
+{
+	board(B){
+		B.elements(E){
+
+			string element_prod_id = E.attribute["PROD_ID"];
+			string element_package_name = E.package.name;
+
+			int match = 0;
+			int indi = 0;
+
+			if(element_prod_id)
 			{
-				string t = strsub(myBits[1], 1, strlen(myBits[1]));
-				myBits[1] = t;
+				// Search by product id
+				for(int indi = 0; indi < numElements; indi++)
+				{
+					if(prod_ids[indi] == element_prod_id)
+					{
+						quantities[indi]++;
+						match = 1;
+					}
+				}
+				if(match == 0)
+				{
+					
+					prod_ids[numElements] = element_prod_id;
+					package_names[numElements] = element_package_name;
+					quantities[numElements] = 1;
+					element_status[numElements] = element_status_valid;
+					numElements++;
+				}
 			}
-
-			string temp = "";
-			sprintf(temp, "%s,", myBits[1]);
-			
-			//See if this prodID is already in the list of prodIDs
-			if(wholeWordMatch(temp, sparkleBOM) == 0) //Not found!
-			{
-				sparkleBOM += temp; //Add it
+			else{
+				// Search by package
+				for(int indi = 0; indi < numElements; indi++)
+				{
+					if(package_names[indi] == element_package_name)
+					{
+						quantities[indi]++;
+						match = 1;
+					}
+				}
+				if(match == 0)
+				{
+					
+					prod_ids[numElements] = "";
+					package_names[numElements] = element_package_name;
+					quantities[numElements] = 1;
+					element_status[numElements] = element_status_invalid;
+					numElements++;
+				}
 			}
 		}
 	}
 
-	//GUI
-	dlgDialog("Bill Of Materials")
-	{
-		dlgHBoxLayout dlgSpacing (400);
-		
-		dlgGroup("BOM for Email Communication") {
-			dlgHBoxLayout{
-				dlgVBoxLayout dlgSpacing(100);
-				dlgTextView(allParts);
-			}
-		}
 
-		dlgGroup("BOM CSV for Sparkle") {
-			dlgHBoxLayout{
-				dlgVBoxLayout dlgSpacing(50);
-				dlgTextView(sparkleBOM);
-			}
-		}
-		
-		dlgHBoxLayout {
-			dlgStretch(1);
-			dlgPushButton ("-Close") dlgAccept(-1);
-		}
-	};
+	categorizeElements();
 
-} else {
-	dlgMessageBox("Please run this ULP from the schematic.");
+
+	while(setup_complete != 1){
+
+		dlgDialog("BOM Output"){
+
+			dlgTabWidget {
+				dlgTabPage("Filter Modification") {
+					dlgHBoxLayout {
+						dlgLabel("BOM Items");
+						dlgLabel("Non-BOM Items");
+					}
+					dlgHBoxLayout {
+
+						dlgListView("Qty\tPROD_ID\tPackage", validlistarry, validSelected, validSort);
+						dlgListView("Qty\tPROD_ID\tPackage", invalidlistarry, invalidSelected, invalidSort);
+					}
+					dlgHBoxLayout {
+
+						dlgPushButton("Move to Non-BOM") { 
+							element_status[valid_index_map[validSelected]] = element_status_invalid;
+							categorizeElements();
+						}
+						dlgPushButton("Move to BOM"){ 
+							element_status[invalid_index_map[invalidSelected]] = element_status_valid;
+							categorizeElements();
+						}
+					}
+				}
+				dlgTabPage("Sparkle Output") {
+					dlgHBoxLayout {
+						string msg = "This is where the Sparkle Product ids will go";
+						dlgTextEdit(sparkleBOM);
+					}
+				}
+	    }
+
+
+
+	 		dlgGridLayout {
+
+	 			dlgCell(0, 0){ 
+	 				dlgPushButton("Done"){
+	 					setup_complete = 1;
+	 					// result = 0;
+						dlgAccept();
+					};
+				};
+	 		}
+
+		};
+	}
+
+	exit(0);
+}
+else
+{
+	dlgMessageBox("Please run this ulp from the board editor");
 	exit(1);
 }
