@@ -518,7 +518,8 @@ t- Items that have no PROD_ID, no contacts, and no holes are considered \"Non-Ha
 \t- You can toggle the filter to see what is hidden from the \"Non-BOM Items\" list\n\
 \t- Items in the \"BOM Items\" list are not affected by filters, so you can manually override a filter.\n\
 \t- A defualt ilter file is loaded on startup, if present. You can also write your own filter files and load them.\n\
-\t\t (each line of the text file is a filter entry)");
+\t\t (each line of the text file is a filter entry)\n\
+\t- The sparkle output will let you know how many BOM items are missing a PROD_ID (these are not displayed in the sparkle CSV)");
 									// dlgListView("Qty\tPROD_ID\tPackage\tExample Name", silklistarry, silkSelected, silkSort);
 									dlgPushButton("Close"){
 										dlgAccept();
