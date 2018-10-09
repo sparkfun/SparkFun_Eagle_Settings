@@ -31,13 +31,14 @@ Modification goals:
 */
 
 
-string ulpName = "SparkFun-BOM_Generator";
+// string ulpName = "SparkFun-BOM_Generator";
+string ulpName = argv[0];
 int setup_complete = 0;
 int redraw = 1;
 
+int element_status_unknown = 0;
 int element_status_valid = 1;
 int element_status_invalid = 2; 
-int element_status_unknown = 0;
 
 // Master lists
 string prod_ids[];
@@ -46,26 +47,127 @@ string values[];
 string names[];
 int quantities[];
 int element_status[];
+int element_is_filtered[];
+int element_is_pure_silk[];
 int numElements = 0;
 
+string prod_id_warning = "";
 
-// These two sets of lists are generated from the master lists above
+
+// These three sets of lists are generated from the master lists above depending on qualities of the elements
 string invalidlistarry[];
 int invalidSort = 0;
 int invalidSelected = -1;
 int invalid_index_map[];
-
 
 string validlistarry[];
 int validSort = 0;
 int validSelected = -1;
 int valid_index_map[];
 
+string filteredlistarry[];
+int filteredSort = 0;
+int filteredSelected = -1;
+int filtered_index_map[];
+
+string silklistarry[];
+int silkSort = 0;
+int silkSelected = -1;
+int silk_index_map[];
+
 int validCount = 0;
 int invalidCount = 0;
+int filteredCount = 0;
+int silkCount = 0;
 
 // A string for sparkle output
 string sparkleBOM;
+
+
+// 
+string configFile  = filesetext(argv[0], ".flt");
+string filterStrings[] = {"fiducial", "stand-off"};
+int filters_active = 1;
+string filterStatus[] = {"off", "on"};
+int filter_string_selected = -1;
+int filter_string_sort = 0;
+string temp_filter_string = "AddFilterHere";
+string customFilterFile = "";
+string numFilteredItems = "";
+
+void configWrite(string outfile){
+  output(outfile){
+  	int index = 0;
+    while(filterStrings[index] != ""){
+    	printf("%s\n", filterStrings[index]);
+    	index++;
+    }
+  }
+}
+
+
+int configRead(string infile) {
+  if(filesize(infile)){ //Check if file exists
+
+	int indk = 0;
+	while(filterStrings[indk] != ""){
+		filterStrings[indk] = "";
+		indk++;
+	}
+
+    string data[];
+    int line = fileread(data, infile);
+
+    if(line)
+    {
+    	int indi = 0;
+    	while(data[indi] != ""){
+	    	filterStrings[indi] = data[indi];
+	    	indi++;
+	    }
+  	}
+  	return 0;
+  }
+  else
+  {
+	  // dlgMessageBox("Warning, your filter file appears to be empty");
+	  // dlgDialog("Nonexistent Filter File"){
+	  // 	dlgLabel("The default filter file was not found, ")
+	  // 	dlgPushButton("Create / Overwrite Filter file"){
+
+	  // 	}
+	  // }
+  	// configWrite(string infile){
+  	return 1;
+  }
+  
+}
+
+void removeFromFilterList()
+{
+	if(filter_string_selected == -1){ return; }
+	
+	int indi = filter_string_selected;
+	while(filterStrings[indi] != "")
+	{
+		filterStrings[indi] = filterStrings[indi+1];
+		indi++;
+	}
+}
+
+void addToFilterList()
+{
+	if(temp_filter_string != "AddFilterHere"){
+		int indi = 0;
+		while(filterStrings[indi] != "")
+		{
+			indi++;
+		}	
+
+		filterStrings[indi] = temp_filter_string;
+		temp_filter_string = "AddFilterHere";
+	}
+}
 
 
 string pidFormat(string id_str)
@@ -112,9 +214,64 @@ void generateSparkleList()
 
 	if(invalidPIDcount)
 	{
-		string msg = "";
-		sprintf(msg, "Warning: %d items in BOM list without PROD_ID", invalidPIDcount);
-		dlgMessageBox(msg);
+		// string msg = "";
+		// sprintf(msg, "Warning: %d items in BOM list without PROD_ID", invalidPIDcount);
+
+		sprintf(prod_id_warning, "Warning: %d BOM items have no PROD_ID!", invalidPIDcount);
+		// dlgMessageBox(msg);
+	}
+	else{
+		sprintf(prod_id_warning, "All BOM items have PROD_ID. Good job :D");
+	}
+}
+
+//Finds a string in a string no matter where, no matter capitalization
+int containsString(string toSearch, string toFind)
+{
+	int pos = strstr(strlwr(toSearch), strlwr(toFind));
+	if(pos >= 0) //String found
+	{
+		return(1);
+	}
+	return(0);	
+}
+
+int filterMatch(string str)
+{
+	// Checks if str contains any of the filter strings
+	int retval = 0; // Begin with no match
+	int indi = 0;
+	while(filterStrings[indi] != "")
+	{
+		if(containsString(str, filterStrings[indi]))
+		{
+			retval = 1;
+		}
+		indi++;
+	}
+	return retval;
+}
+
+void applyFilters()
+{
+	for(int indi = 0; indi < numElements; indi++)
+	{
+		if(element_status[indi] == element_status_valid)
+		{
+			element_is_filtered[indi] = 0; // Remove filter tag from any "valid" (BOM item) element
+		}
+		else
+		{
+			// If the item is not valid (i.e. not a BOM item) then run the filter application to determine if it should be filtered
+			if(filterMatch(package_names[indi]))
+			{
+				element_is_filtered[indi] = 1;
+			}
+			else
+			{
+				element_is_filtered[indi] = 0;
+			}
+		}
 	}
 }
 
@@ -123,15 +280,31 @@ void categorizeElements()
 	// Clear out the old lists
 	for(int indk = 0; indk < validCount; indk++){
 		validlistarry[indk] = "";
+		valid_index_map[indk] = -1;
 	}
 	for(int indj = 0; indj < invalidCount; indj++)
 	{
 		invalidlistarry[indj] = "";
+		invalid_index_map[indj] = -1;
+	}
+	for(int indl = 0; indl < filteredCount; indl++)
+	{
+		filteredlistarry[indl] = "";
+		filtered_index_map[indl] = -1;
+	}
+	for(int indm = 0; indm < silkCount; indm++)
+	{
+		silklistarry[indm] = "";
+		silk_index_map[indm] = -1;
 	}
 
 	// Reset the counters
 	validCount = 0;
 	invalidCount = 0;
+	filteredCount = 0;
+	silkCount = 0;
+
+	applyFilters();	// Sets the "is filtered" state for any elements in the NON-Bom list
 
 	// Recategorize the elements from the master lists
 	for(int indi = 0; indi < numElements; indi++)
@@ -145,14 +318,40 @@ void categorizeElements()
 		}
 		else if(element_status[indi] == element_status_invalid)
 		{
-			invalidlistarry[invalidCount] = temp;
-			invalid_index_map[invalidCount] = indi;
-			invalidCount++;
+			if(element_is_pure_silk[indi] == 1)
+			{
+				silklistarry[silkCount] = temp;
+				silk_index_map[silkCount] = indi;
+				silkCount++;
+			}
+			else if(element_is_filtered[indi])
+			{
+				if(filters_active)			/// When the filters are turned on put filtered items in their own list
+				{
+					filteredlistarry[filteredCount] = temp;
+					filtered_index_map[filteredCount] = indi;
+					filteredCount++;
+				}
+				else						// Otherwise keep them in the "NON-BOM" list
+				{
+					invalidlistarry[invalidCount] = temp;
+					invalid_index_map[invalidCount] = indi;
+					invalidCount++;
+				}
+			}
+			else
+			{
+				invalidlistarry[invalidCount] = temp;
+				invalid_index_map[invalidCount] = indi;
+				invalidCount++;
+			}
 		}
 		else{
 			// Problems have arisen
 		}
 	}
+
+	sprintf(numFilteredItems, "%d", filteredCount);	// Show how many items are hidden
 
 	generateSparkleList();
 }
@@ -164,6 +363,15 @@ if(schematic)
 }
 if(board)
 {
+
+	int cnfrdres = configRead(configFile);
+	if(cnfrdres){
+		configWrite(configFile);
+	}
+
+
+	// This loop does the initial categorization of all the components. 
+	// It is based off of only existence of PROD_ID or not
 	board(B){
 		B.elements(E){
 
@@ -174,6 +382,8 @@ if(board)
 
 			int match = 0;
 			int indi = 0;
+
+
 
 			if(element_prod_id)
 			{
@@ -195,10 +405,32 @@ if(board)
 					values[numElements] = element_value;
 					names[numElements] = element_name;
 					element_status[numElements] = element_status_valid;
+					element_is_filtered[numElements] = 0; // No initial filter
+					element_is_pure_silk[numElements] = 0; // elements with PROD_ID are not labels (almost 100% true... so im going with it)
 					numElements++;
 				}
 			}
 			else{
+
+				// Test for pure-silkness
+				//If this element has pads then it's not a label
+				int isALabel = 1;
+				int padCount = 0;
+				E.footprint.contacts(C)
+				{
+					padCount++;
+				}
+				if(padCount > 0) isALabel = 0;
+				//If this element has a hole then it's not a label
+				int holeCount = 0;
+				E.footprint.holes(H)
+				{
+					holeCount++;
+				}
+				if(holeCount > 0) isALabel = 0;
+
+
+
 				// Search by package
 				for(int indi = 0; indi < numElements; indi++)
 				{
@@ -217,6 +449,8 @@ if(board)
 					values[numElements] = element_value;
 					names[numElements] = element_name;
 					element_status[numElements] = element_status_invalid;
+					element_is_filtered[numElements] = 0; // No initial filter
+					element_is_pure_silk[numElements] = isALabel;
 					numElements++;
 				}
 			}
@@ -227,40 +461,134 @@ if(board)
 	categorizeElements();
 
 
-	while(setup_complete != 1){
+	// while(setup_complete != 1){
 
 		dlgDialog("BOM Output"){
 
 			dlgTabWidget {
-				dlgTabPage("Filter Modification") {
-					dlgHBoxLayout {
-						dlgLabel("BOM Items");
-						dlgLabel("Non-BOM Items");
-					}
+				dlgTabPage("BOM View") {
 					dlgHBoxLayout {
 
-						dlgListView("Qty\tPROD_ID\tPackage\tExample Name", validlistarry, validSelected, validSort);
-						dlgListView("Qty\tPROD_ID\tPackage\tExample Name", invalidlistarry, invalidSelected, invalidSort);
-					}
-					dlgHBoxLayout {
+						dlgVBoxLayout{
+							// BOM items
+							dlgLabel("BOM Items");
+							dlgListView("Qty\tPROD_ID\tPackage\tExample Name", validlistarry, validSelected, validSort);
 
-						dlgPushButton("Move to Non-BOM") { 
-							element_status[valid_index_map[validSelected]] = element_status_invalid;
+							dlgPushButton("Move to Non-BOM") { 
+								if(validSelected != -1)
+								{
+									element_status[valid_index_map[validSelected]] = element_status_invalid;
+									categorizeElements();
+								}
+							}
+						}
+
+						dlgVBoxLayout{
+							// Non-BOM items
+							dlgHBoxLayout{
+								dlgLabel("Non-BOM Items");
+								
+							}
+							// dlgStretch(1);
+							dlgListView("Qty\tPROD_ID\tPackage\tExample Name", invalidlistarry, invalidSelected, invalidSort);
+							dlgPushButton("Move to BOM"){ 
+								if(invalidSelected != -1)
+								{
+									element_status[invalid_index_map[invalidSelected]] = element_status_valid;
+									categorizeElements();
+								}
+							}					
+						}
+
+						// Filters
+						dlgVBoxLayout{
+
+							dlgLabel("Welcome to the BOM utility!");
+							dlgPushButton("BOM Utility Help/Info/FAQ"){
+								dlgDialog("NBOM Utility Info"){
+									dlgLabel("This ULP lets you confidently keep track of all the elements on your board\n\
+\n\
+The main feature is the ability to change which items are considered to be part of the BOM.\n\
+There are two ways of doins this:\n\
+\t- 1) Manually move items from \"BOM Items\" to \"Non-BOM Items\" and back using the buttons below each list\n\
+\t- 2) Apply a filter on the package names to exclude them from the \"Non-BOM Items\" list.\n\
+\n\
+* Notes: \n\
+t- Items that have no PROD_ID, no contacts, and no holes are considered \"Non-Hardware\" and are excluded from BOM permanently\n\
+\t- You can toggle the filter to see what is hidden from the \"Non-BOM Items\" list\n\
+\t- Items in the \"BOM Items\" list are not affected by filters, so you can manually override a filter.\n\
+\t- A defualt ilter file is loaded on startup, if present. You can also write your own filter files and load them.\n\
+\t\t (each line of the text file is a filter entry)");
+									// dlgListView("Qty\tPROD_ID\tPackage\tExample Name", silklistarry, silkSelected, silkSort);
+									dlgPushButton("Close"){
+										dlgAccept();
+									}
+								};
+							}
+							// dlgLabel("Filte");
+							dlgHBoxLayout{
+								dlgVBoxLayout{
+									dlgLabel("Filters status: (double click to change)");
+									dlgListBox(filterStatus, filters_active) categorizeElements();
+								}
+								dlgVBoxLayout{
+									dlgLabel("Number of filtered items (hidden from the Non-BOM list):");
+									dlgTextView(numFilteredItems);
+								}
+							}
+							// dlgPushButton("Toggle Filters"){ 
+							// 	if(filters_active == 1){ filters_active = 0; }
+							// 	else{ filters_active = 1; }
+							// 	categorizeElements();
+							// }
+							dlgPushButton("View Non-Hardware Items"){
+								dlgDialog("Non-Hardware Elements"){
+									dlgLabel("Stuff");
+									dlgListView("Qty\tPROD_ID\tPackage\tExample Name", silklistarry, silkSelected, silkSort);
+									dlgPushButton("Close"){
+										dlgAccept();
+									}
+								};
+							}
+						}
+					}
+				}
+				dlgTabPage("Filter Settings") {
+					// Filter Modification
+					dlgLabel("Current Filter Strings \n(Apply only to items in the Non-BOM list - initially any item with a PROD_ID is displayed)");
+					dlgListView("Filter", filterStrings, filter_string_selected, filter_string_sort);
+					dlgPushButton("Remove from filter list"){
+						removeFromFilterList();
+						categorizeElements();
+					}
+
+					dlgLabel("Add new filters");
+					dlgTextEdit(temp_filter_string);
+					dlgPushButton("Add to filter list"){
+						addToFilterList();
+						categorizeElements();
+					}
+
+					dlgHBoxLayout{
+						dlgPushButton("Load filter cnfg file"){
+							customFilterFile = dlgFileOpen("Select a filter cnfiguration file (.flt)", path_ulp[0], "*.flt");
+							configRead(customFilterFile);
 							categorizeElements();
 						}
-						dlgPushButton("Move to BOM"){ 
-							element_status[invalid_index_map[invalidSelected]] = element_status_valid;
+						dlgPushButton("Save as default cnfg"){
+							configWrite(configFile);
 							categorizeElements();
 						}
 					}
 				}
 				dlgTabPage("Sparkle Output") {
-					dlgHBoxLayout {
-						string msg = "This is where the Sparkle Product ids will go";
-						dlgTextEdit(sparkleBOM);
-					}
+					dlgLabel("CSV of PROD_IDs for Sparkle");
+					dlgTextView(sparkleBOM);
+					dlgLabel("PROD_ID Status:");
+					dlgTextView(prod_id_warning);
 				}
-	    }
+	    	}
+
 
 
 
@@ -276,7 +604,7 @@ if(board)
 	 		}
 
 		};
-	}
+	// }
 
 	exit(0);
 }
