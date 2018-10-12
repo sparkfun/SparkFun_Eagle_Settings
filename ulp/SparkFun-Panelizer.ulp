@@ -10,13 +10,8 @@ string bigScript = ""; //The big string of commands that we will eventually run 
 /*
 	The following command, run from a command prompt, will open eagle and run it against a board
 	
-"C:\EAGLE 9.1.2\eagle.exe" -C "run C:\Users\OldLenny\Dropbox\Projects\SparkFun_Eagle_Settings\ulp\sparkfun-panelizer.ulp;" "C:\Users\OldLenny\Dropbox\Projects\Battery_Babysitter\Hardware\sparkfun-battery-babysitter.brd"
-
-	
-	
-	TODO
-
-	*/
+	"C:\EAGLE 9.1.2\eagle.exe" -C "run C:\Users\OldLenny\Dropbox\Projects\SparkFun_Eagle_Settings\ulp\sparkfun-panelizer.ulp;" "C:\Users\OldLenny\Dropbox\Projects\Battery_Babysitter\Hardware\sparkfun-battery-babysitter.brd"
+*/
 
 string configFile  = filesetext(argv[0], ".cfg");
 
@@ -69,7 +64,7 @@ void configRead() {
   }
 }
 
-real copyOversizeAmount = 0.5;
+real copyOversizeAmount = 0.15;
 real designWidth; //In inches
 real designHeight;
 real xMax = 0;
@@ -158,6 +153,8 @@ int hasPartsOnLayer(int layerNumber)
 						&& containsString(E.package.name, "SJ_2S-NO") == 0
 						&& containsString(E.package.name, "SMT-JUMPER") == 0
 						&& containsString(E.package.name, "USB-MICROB-PTH-MILL") == 0
+						&& containsString(E.package.name, "USB-C") == 0
+						&& containsString(E.package.name, "PAD.03X.05") == 0
 						) 
 					{
 						//String not found, this is a legit part
