@@ -1,0 +1,134 @@
+
+#usage "en:<b>Run a SCRIPT through all Device Sets (Technology) in a library to define ATTRIBUTEs</b><p>\n"
+       "RUN set-all-devices-attribute [SCRIPT]<br>"
+       "The script must conform to the following syntax:<br> "
+       "ATTRIBUTE name 'value'<br>"
+       "ATTRIBUTE name DELETE<p>"
+       "The words may be separated by <b>one single space character only</b>.<br>"
+       "In case the value DELETE is used, the attribute will be deleted.<p>"
+       "Value must be included in two single quotes, otherwise special "
+       "characters, like <i>+ - space</i> can cause error messages in the script file.<br> "
+       "If there is no value given or this attribute is already defined in the Device Set "
+       "the attribute remains unchanged.<p> "
+       "<author>Author: librarian@cadsoft.de</author><p>"
+       ,
+       "de:<b>Startet ein SCRIPT um in allen Devicesets (Technologien) in einer Bibliothek ATTRIBUTE zu definieren.</b><p>\n"
+       "RUN set-all-devices-attribute [SCRIPT]<br>"
+       "Das Script muß nach folgenden Regeln erstellt sein:<br>"
+       "ATTRIBUTE Name 'Wert'<br>"
+       "ATTRIBUTE Name DELETE<p>"
+       "Die Wörter dürfen mit <b>nur einem Leerzeichen</b> (Space) getrennt sein.<br>"
+       "Ist der Wert DELETE zugewiesen, wird das Attribute gelöscht<p>"
+       "Der Wert muß in zwei Apostrophen eingeschlossen sein, da es sonst bei "
+       "Sonderzeichen + - Space etc. im erzeugten Script zu Fehlermeldungen kommen kann.<br>"
+       "Ist kein Wert angegeben und/oder das Attribute im Deviceset schon vorhanden und "
+       "ein Wert zugewiesen, dann bleibt das Attribute in diesem Deviceset unverändert.<p>"
+       "<author>Author: librarian@cadsoft.de</author><p>"
+
+
+// https://github.com/plusea/EAGLE/blob/master/ulp/set-all-devices-attribute.ulp
+
+string Version = "1.1";    // 2008-09-04 check Variant name
+               // 1.0      // 2008-06-13 alf@cadsoft.de
+
+string ScriptFile = argv[1];
+string cmdScript, cmd, s;
+
+string Lines[], Attribut[], AttValue[];
+int    setAtt[];
+int    cntl = 0;
+int    cntAtt = 0;
+
+if (argv[1] == "?") {
+  dlgMessageBox(usage, "OK");
+}
+
+void test(void) {
+  dlgDialog(filename(argv[0]) + " Script") {
+    dlgTextView(cmd);
+    dlgHBoxLayout {
+      dlgPushButton("OK") dlgAccept();
+      dlgPushButton("Abbruch") { dlgReject(); exit(-2); }
+    }
+  };
+  return;
+}
+
+
+string check_varname(string s) {  // 2008-09-04
+  if(s == "''") return s;
+  return "'"+s+"'";
+}
+
+
+void readScript(void) {
+  cntl = fileread(Lines, ScriptFile);
+  for (int n = 0; n < cntl; n++) {
+    if (strstr(Lines[n], "ATTRIBUTE") == 0) {
+      string a[];
+      int cnta = strsplit(a, Lines[n], ' ');
+      Attribut[cntAtt] = a[1];
+      AttValue[cntAtt] = a[2];
+      for (int an = 3; an < cnta; an++) { // complete parameter with space
+        AttValue[cntAtt] += " "+a[an];
+      }
+      cntAtt++;
+    }
+  }
+  return;
+}
+
+
+if  (library) {
+  library(L) {
+    if (ScriptFile) {
+      string fg[];
+      int cntf = fileglob(fg, path_scr[0]+"/"+ScriptFile);
+      if (!cntf) ScriptFile = "";
+      else ScriptFile = fg[0];
+    }
+    if (!ScriptFile) ScriptFile = dlgFileOpen("Select a SCRIPT with ATTRIBUTE commands to run in all DEVICESETS", path_scr[0], "*.scr");
+    if (!ScriptFile) exit(0);
+    readScript();
+    cmdScript = filesetext(L.name, "~.scr");
+    L.devicesets(DS) {
+      sprintf(s, "EDIT %s.DEV;\n", DS.name);
+      cmd += s;
+      int n;
+      DS.devices(D) {
+        string t[];
+        int nt = strsplit(t, D.technologies, ' ');
+        sprintf(s, "PACKAGE %s;\n", check_varname(D.name) );
+        cmd += s;
+        for (int i = 0; i < nt; i++) {
+          sprintf(s, "TECHNOLOGY %s;\n", t[i]);
+          cmd += s;
+          for (n = 0; n < cntAtt; n ++) setAtt[n] = 1;  // preset flags
+          D.attributes(A, t[i]) {
+            for (n = 0; n < cntAtt; n++) {
+              status(DS.name+":"+D.name+":"+t[i]);
+
+              if (A.name == Attribut[n]) {
+                if (A.value || !AttValue[n])  setAtt[n] = 0;  // wenn das Attribut schon einen Wert besitzt
+                                                              // oder im Script kein Wert zugewiesen wird,
+                                                              // wird das Attribut nicht geändert
+              }
+            }
+          }
+          for (n = 0; n < cntAtt; n ++) {
+            if (setAtt[n] || AttValue[n] == "DELETE") {
+              sprintf(s, "ATTRIBUTE %s %s;\n", Attribut[n], AttValue[n]);
+              cmd+=s;
+              s="";
+            }
+          }
+        }
+      }
+    }
+  }
+  output(cmdScript, "wtD") printf("%s", cmd);
+  sprintf(s, "SCRIPT '%s';\n", cmdScript);
+  exit(s);
+}
+
+else dlgMessageBox("Start this ULP from a Library", "OK");

@@ -1,240 +1,670 @@
+#usage "en: <b>Outputs the contents of a design to Sparkle Friendly list</b> "
+"<p>Usage: run SparkFun-BOM_Generator</p>"
+"<p>Author: <author>Owen Lyke, Nathan Seidle &lt;owen.lyke@sparkfun.com&gt;</author><br />"
+"Version: <em>1.0</em></p>"
+
+
+/*
+
 #usage "en: <b>Outputs the contents of a design to Sparkle Friendly list</b> PCBWay requires the user to create panels that are at least 75x75mm. If the panel is smaller than this they will reject it because their v-score machine can't handle it. This ULP takes a given design and replicates it until the panel is just over the dimensions specified by the user. It also adds dimension lines between copies and v-score text so that PCBWay knows where to v-score. This script will also detect overhanging parts and warn the user that gaps are needed. Script tries to identify the soldermask color based on the logos on the board (SparkFun vs SparkX vs LilyPad). Script looks for 0.8mm tag for thin boards. Script outputs a ordering_instructions.txt file containing all the characteristics of this panel."
 "<p>Usage: run bom_sparkle</p>"
 "<p>Author: <author>Nathan Seidle &lt;inathan@sparkfun.com&gt;</author><br />"
 "Version: <em>1.0</em></p>"
 
-//Qty, SKU, Description
-//This output, along with a build sheet, is handy for Production when setting up the pick and place machine
-//Mark parts with no Prod-ID
+*/
 
-//CSV of production IDs in a text box
-//This output is handy when entering BOMs into Sparkle
 
-//TODO Add support for PTH parts
+// Modified October 2018, Owen Lyke
+/*
 
-//Main method for creating searchable lists of strings
-//https://github.com/sparkfunX/Desktop-PickAndPlace-CHMT36VA/blob/1ee665d34516afad8c6f67a0673c987d52c927f7/Eagle-Conversion/ConvertToCharm.ulp#L60
+Modification goals: 
+- improve detection of false positives (a part that is on the board but doesn't exactly match a production part that can be used)
+	* previous method was to search the part name and make sure it included the value
 
-#include "Include_String.ulp" //Has stringTrim
+- output a format that sparkle can handle to automatically set the quantity (this depends on SWIT adding this functionality in sparkle first)
+	* currently in-progress, requires SWIT support but can be easily adapted into the output format when needed
 
-int foundParts = 0;
-string partNames[];
-string partIDs[];
-int partQty[];
-int mismatchPartValues = 0;
-string mismatchParts = "";
+- improve detetion of on-board vs no-package components
+	* answered by allowing the user to flag entries as "BOM" or "Non-BOM" while still not missing any board elements
+	* also looping through boad elements as opposed to schematic elements helps
 
-//There are a lot of schematic parts that are not mounted to the PCB
-//These lists of words help ignore the correct parts
-//Be careful adding new words. It can cause valid components to get ignored.
-string noMount_WholeWordMatch = "5V, 3.3V, 2.8V, GND, VIN, VCCIO";
-string noMount_PartialWordMatch = "LOGO, TESTPOINT, FRAME, FIDUCIAL, JUMPER, I2C_STANDARD, CONN_, STAND-OFF";
+*/
 
-//Search for match between word_1 and word_2. Looks for comma delimited lists in word_2
-//Returns true if found
-int wholeWordMatch(string wordToFind_1, string wordToFind_2)
-{
-	//Make everything lowercase
-	wordToFind_1 = strlwr(wordToFind_1);
-	wordToFind_2 = strlwr(wordToFind_2);
-	
-    //Treat wordToFind_2 as a possible list
-    string aliases[];
-    int cnt = strsplit(aliases, wordToFind_2, ','); //aliases[] is now loaded with separated list
-	for(int k = 0; k < cnt; k++){
 
-		if(stringTrim(aliases[k]) != "") //The strsplit above returns records with zero length, ignore them
-		{
-			//Check if word_1 is word_2
-			if(wordToFind_1 == stringTrim(aliases[k])) {
-				//Found!
-				return(1);
-			}
-		}
+// string ulpName = "SparkFun-BOM_Generator";
+string ulpName = argv[0];
+int setup_complete = 0;
+int redraw = 1;
+
+
+// Master lists of properties that we care about
+string master_prod_ids[];
+string master_package_names[];
+string master_values[];
+string master_names[];
+int master_quantities[];
+int master_status[];
+int master_matches_filters[];
+int numUniqueEntries = 0;
+
+
+// There are four classifications that a given unique entry can have:
+// - Valid for BOM, called "bom"
+// - Invalid for BOM, called "nonbom"
+// - Invlaid for BOM AND  hidden by filters, called "filtered"
+// - Permanently removed from the search because it is a non-physical item, called "nonhardware"
+
+// Status definitions
+int element_status_unknown = 0;
+int element_status_bom = 1;
+int element_status_nonbom = 2; 
+// int element_status_filtered = 3;	// Filtered is not a status anymore, rather it is a show/hide flag and it is contained in master_matches_filters
+int element_status_nonhardware = 4;
+
+// Info for nonbom elements
+string nonbomlistarry[];
+int nonbomSort = 0;
+int nonbomSelected = -1;
+int nonbom_index_map[];
+
+// Info for bom elements
+string bomlistarry[];
+int bomSort = 0;
+int bomSelected = -1;
+int bom_index_map[];
+
+// Info for filtered elements
+string filteredlistarry[];
+int filteredSort = 0;
+int filteredSelected = -1;
+int filtered_index_map[];
+
+// Info for nonhardware elements
+string nonhardwarelistarry[];
+int nonhardwareSort = 0;
+int nonhardwareSelected = -1;
+int nonhardware_index_map[];
+
+// Counters for the number of elements in each category
+int bomCount = 0;
+int nonbomCount = 0;
+int filteredCount = 0;
+int nonhardwareCount = 0;
+
+
+// Filter settings 
+string configFile  = filesetext(argv[0], ".flt");
+string filterStrings[] = {"fiducial", "stand-off"};
+int filters_active = 1;
+string filterStatus[] = {"off", "on"};
+int filter_string_selected = -1;
+int filter_string_sort = 0;
+string temp_filter_string = "AddFilterHere";
+string customFilterFile = "";
+
+
+
+
+
+
+// GUI Vars
+string prod_id_warning = "";
+string headerString = "Qty\tPROD_ID\tNames\tValue\tPackage";
+string sparkleBOM;												// A string for sparkle output
+string numFilteredItems = "";
+
+
+
+// Function definitions
+
+// Saves currrent filter strings to file "outfile"
+void configWrite(string outfile){
+  output(outfile){
+  	int index = 0;
+    while(filterStrings[index] != ""){
+    	printf("%s\n", filterStrings[index]);
+    	index++;
     }
-	
-	return(0); //Not found
+  }
 }
 
-//Search for word_1 in word_2. Looks for comma delimited lists as well
-//Returns true if found
-int partialWordMatch(string wordToFind_1, string wordToFind_2)
+// Reads new filter strings from file "infile"
+int configRead(string infile) {
+  if(filesize(infile)){ //Check if file exists
+
+	int indk = 0;
+	while(filterStrings[indk] != ""){
+		filterStrings[indk] = "";
+		indk++;
+	}
+
+    string data[];
+    int line = fileread(data, infile);
+
+    if(line)
+    {
+    	int indi = 0;
+    	while(data[indi] != ""){
+	    	filterStrings[indi] = data[indi];
+	    	indi++;
+	    }
+  	}
+  	return 0;
+  }
+  else
+  {
+  	return 1;
+  }
+  
+}
+
+void removeFromFilterList()
 {
-	//Make everything lowercase
-	wordToFind_1 = strlwr(wordToFind_1);
-	wordToFind_2 = strlwr(wordToFind_2);
+	if(filter_string_selected == -1){ return; }
 	
-    //Treat wordToFind_2 as a possible list
-    string aliases[];
-    int cnt = strsplit(aliases, wordToFind_2, ','); //aliases[] is now loaded with separated list
-	for(int k = 0; k < cnt; k++){
-
-		if(stringTrim(aliases[k]) != "") //The strsplit above returns records with zero length, ignore them
-		{
-			//Check if word_1 is inside one of the aliases
-			int pos = strstr(stringTrim(aliases[k]), wordToFind_1);
-			if(pos != -1){ //Found!
-				return(1);
-			}
-	  
-			//Check if this alias is inside word_1
-			pos = strstr(wordToFind_1, stringTrim(aliases[k]));
-			if(pos != -1){ //Found!
-				return(1);
-			}
-		}
-    }
-	
-	return(0); //No found
-}
-
-int partIsMounted(string partName)
-{
-	if(partialWordMatch(partName, noMount_PartialWordMatch) == 1) return(0); //Part is a no mount part
-	if(wholeWordMatch(partName, noMount_WholeWordMatch) == 1) return(0); //Part is a no mount part
-	return(1); //This part is good to mount
-}
-
-//Step through devices on board
-void loadBoardInformation() {
-	
-	//Walk through all parts in the schematic
-	schematic(SCH) {
-		SCH.parts(P) {
-			string partName = P.device.name;
-			string partProdID = "";
-
-			int attributeCount = 0;
-			P.attributes (A)
-			{
-				//First A.value is the PROD_ID
-				//Next A.value is RED, or 0.1uF (the value box on the part)
-				
-				if(attributeCount == 0)
-				{
-					partProdID = A.value;
-				}
-				attributeCount++;
-			}
-
-			//Detect if this part name has a noMountPart within it
-			if(partIsMounted(partName))
-			{
-				//Check to see if a 10K part has a 2.2K value (user modified a part instead of adding the correct part)
-				if(partialWordMatch(partName, P.value) == 0)
-				{
-					//Value not found in partName
-					mismatchPartValues = 1; //We have a mismatch!
-					mismatchParts += partName + ", " + P.value + "\n";
-				}
-					
-
-				//Detect if this partName is new or if we already have it
-				
-				//Search the array of partNames
-				int found = 0;
-				for(int x = 0 ; x < foundParts ; x++)
-				{
-					if(partNames[x] == partName)
-					{
-						found = 1;
-						partQty[x]++;
-						break;
-					}
-				}
-				if(found == 0) //New part!
-				{
-					partQty[foundParts] = 1;
-					partNames[foundParts] = partName;
-					
-					if(partProdID == "") partProdID = "No Prod ID";
-					partIDs[foundParts] = partProdID;
-					
-					foundParts++;
-				}
-			}
-		}
+	int indi = filter_string_selected;
+	while(filterStrings[indi] != "")
+	{
+		filterStrings[indi] = filterStrings[indi+1];
+		indi++;
 	}
 }
 
-if (schematic) {
-	
-	loadBoardInformation();
-	
-	//Put list together
-	string allParts = "Qty, PROD_ID, Description\n";
-	for(int x = 0 ; x < foundParts ; x++)
+void addToFilterList()
+{
+	if(temp_filter_string != "AddFilterHere"){
+		int indi = 0;
+		while(filterStrings[indi] != "")
+		{
+			indi++;
+		}	
+
+		filterStrings[indi] = temp_filter_string;
+		temp_filter_string = "AddFilterHere";
+	}
+}
+
+
+string pidFormat(string id_str)
+{
+	string numeral_entries[];
+	int numEntries = strsplit(numeral_entries, id_str, '-');
+	if(numEntries < 2)
+	{
+		// dlgMessageBox("Too few entries found in the product id");
+		return "NaN";
+	}
+	string numerals = numeral_entries[1];
+	while(numerals[0] == '0')
+	{
+		string t = strsub(numerals, 1, strlen(numerals));
+		numerals = t;
+	}
+
+	return numerals;
+}
+
+void generateSparkleList()
+{
+	int invalidPIDcount = 0;
+	sparkleBOM = "";
+	for(int indi = 0; indi < bomCount; indi++)
 	{
 		string temp = "";
-		sprintf(temp, "%d, %s, %s\n", partQty[x], partIDs[x], partNames[x]);
-		allParts += temp;
-	}
-
-	if(mismatchPartValues == 1)
-	{
-		allParts += "\nThere are mismatched parts:\n";
-		allParts += mismatchParts;
-	}
-
-	//Put raw Sparkle BOM together
-	//This is a list of just partIDs with no leading letters or numbers: 810, 12544, etc.
-	//This list is easily pasted into the Sparkle BOM tab
-	string sparkleBOM = "";
-	for(x = 0 ; x < foundParts ; x++)
-	{
-		//Sparkle only wants the numeric value, cut off all the alpha bits
-		string myBits[];
-		strsplit(myBits, partIDs[x], '-');
-		
-		if(strlen(myBits[1]) > 0)
+		string prod_id = master_prod_ids[bom_index_map[indi]];
+		string idNUM = pidFormat(prod_id);
+		if(idNUM == "NaN"){
+			invalidPIDcount++;
+		}
+		else if(indi < (bomCount - 1))
 		{
-			//We have a valid partID
+			sprintf(temp, "%s,", idNUM);
+		}
+		else
+		{
+			sprintf(temp, "%s", idNUM);
+		}
+		sparkleBOM += temp;
+	}
 
-			//We now have something like 09804 in myBits[1]
-			//Remove leading zero (jeesh sparkle!)
-			while(myBits[1][0] == '0')
+	if(invalidPIDcount)
+	{
+		// string msg = "";
+		// sprintf(msg, "Warning: %d items in BOM list without PROD_ID", invalidPIDcount);
+
+		sprintf(prod_id_warning, "Warning: %d BOM items have no PROD_ID!", invalidPIDcount);
+		// dlgMessageBox(msg);
+	}
+	else{
+		sprintf(prod_id_warning, "All BOM items have PROD_ID. Good job :D");
+	}
+}
+
+//Finds a string in a string no matter where, no matter capitalization
+int containsString(string toSearch, string toFind)
+{
+	int pos = strstr(strlwr(toSearch), strlwr(toFind));
+	if(pos >= 0) //String found
+	{
+		return(1);
+	}
+	return(0);	
+}
+
+int filterMatch(string str)
+{
+	// Checks if str contains any of the filter strings
+	int retval = 0; // Begin with no match
+	int indi = 0;
+	while(filterStrings[indi] != "")
+	{
+		if(containsString(str, filterStrings[indi]))
+		{
+			retval = 1;
+		}
+		indi++;
+	}
+	return retval;
+}
+
+int matchesFilters(UL_ELEMENT E)
+{
+	return filterMatch(E.package.name);
+}
+
+int getStatus(UL_ELEMENT E)
+{
+	// This is the function that contains rules that determine the status of a given element
+	int this_status = element_status_unknown;
+
+	// Flags for special circumstances
+	int is_dnp = 0;
+	int isALabel = 1;
+	int has_pid = 0;
+
+	// Test for DNP components
+	if(containsString(E.attribute["Value"], "dnp") || containsString(E.value, "dnp"))
+	// if((E.value == "DNP") || (E.attribute["Value"] == "DNP"))
+	{
+		is_dnp = 1;
+	}
+
+	// Test for pure-silkness
+	//If this element has pads then it's not a label
+	int padCount = 0;
+	E.footprint.contacts(C)
+	{
+		padCount++;
+	}
+	if(padCount > 0) isALabel = 0;
+	//If this element has a hole then it's not a label
+	int holeCount = 0;
+	E.footprint.holes(H)
+	{
+		holeCount++;
+	}
+	if(holeCount > 0) isALabel = 0;
+
+	// See if it has a product id
+	if(E.attribute["PROD_ID"])
+	{
+		has_pid = 1;
+	}
+
+
+
+
+	// Now take your info and make a decision about the status of the element:
+	if(is_dnp || isALabel)
+	{
+		this_status = element_status_nonhardware;
+	}
+	else if(has_pid)
+	{
+		this_status = element_status_bom;	// Has pid and IS hardware then its on the BOM
+	}
+	else
+	{
+		this_status = element_status_nonbom;	
+	}
+
+	return this_status;
+}
+
+int elementsMatch(UL_ELEMENT E, int master_index)
+{
+	// The definition of a unique element is important, and we will define it in reverse. 
+	// A non-unique element is one that has a different:
+	// - value
+	// - package
+	// - product id
+	// - element_status
+
+	int match = 1;
+	if(E.value != master_values[master_index]){ match = 0; }
+	if(E.package.name != master_package_names[master_index]){ match = 0; }
+	if(E.attribute["PROD_ID"] != master_prod_ids[master_index]){ match = 0; }
+	if(getStatus(E) != master_status[master_index]){match = 0;}
+
+	return match;
+}
+
+int elementIsUnique(UL_ELEMENT E)
+{
+	int is_unique = 1;
+	for(int indi = 0; indi < numUniqueEntries; indi++)
+	{
+		if(elementsMatch(E, indi) == 1)
+		{
+			is_unique = 0;
+		}
+	}
+	return is_unique;
+}
+
+int getMasterIndexMatch(UL_ELEMENT E)
+{
+	int index = 0;
+	if(elementIsUnique(E) == 0){
+		while(elementsMatch(E, index) != 1)
+		{
+			index++;
+		}
+	}
+	else
+	{
+		index = -1;
+	}
+	return index;
+}
+
+void initialGrouping()
+{
+	// This is how we initially count the number of unique elements, as well as fill out the arrays of data that can be used for sorting later
+
+	board(B)
+	{
+		B.elements(E){
+			if(elementIsUnique(E))
 			{
-				string t = strsub(myBits[1], 1, strlen(myBits[1]));
-				myBits[1] = t;
+				// Add new unique item to the master arrays
+
+				master_prod_ids[numUniqueEntries] = E.attribute["PROD_ID"];
+				master_package_names[numUniqueEntries] = E.package.name;
+				master_values[numUniqueEntries] = E.value;
+				master_names[numUniqueEntries] = E.name;
+				master_quantities[numUniqueEntries] = 1;
+				master_status[numUniqueEntries] = getStatus(E); // Returns one of four categories, bom, nonbom, filtered, or nonhardware
+				master_matches_filters[numUniqueEntries] = matchesFilters(E);
+				numUniqueEntries++;
+
 			}
-
-			string temp = "";
-			sprintf(temp, "%s,", myBits[1]);
-			
-			//See if this prodID is already in the list of prodIDs
-			if(wholeWordMatch(temp, sparkleBOM) == 0) //Not found!
+			else
 			{
-				sparkleBOM += temp; //Add it
+				int index = getMasterIndexMatch(E);
+				if(index != -1)
+				{
+					// Add quantity and additional name to that master item
+					master_names[index] += (", " + E.name);
+					master_quantities[index]++;
+				}
 			}
 		}
 	}
+}
 
-	//GUI
-	dlgDialog("Bill Of Materials")
+void categorizeElements()
+{
+	// Clear out the old lists
+	for(int indk = 0; indk < bomCount; indk++){
+		bomlistarry[indk] = "";
+		bom_index_map[indk] = -1;
+	}
+	for(int indj = 0; indj < nonbomCount; indj++)
 	{
-		dlgHBoxLayout dlgSpacing (400);
-		
-		dlgGroup("BOM for Email Communication") {
-			dlgHBoxLayout{
-				dlgVBoxLayout dlgSpacing(100);
-				dlgTextView(allParts);
+		nonbomlistarry[indj] = "";
+		nonbom_index_map[indj] = -1;
+	}
+	for(int indl = 0; indl < filteredCount; indl++)
+	{
+		filteredlistarry[indl] = "";
+		filtered_index_map[indl] = -1;
+	}
+	for(int indm = 0; indm < nonhardwareCount; indm++)
+	{
+		nonhardwarelistarry[indm] = "";
+		nonhardware_index_map[indm] = -1;
+	}
+
+	// Reset the counters
+	bomCount = 0;
+	nonbomCount = 0;
+	filteredCount = 0;
+	nonhardwareCount = 0;
+
+	// applyFilters();	// Sets the "is filtered" state for any elements in the NON-Bom list
+
+	// Recategorize the elements from the master lists
+	for(int indi = 0; indi < numUniqueEntries; indi++)
+	{
+		string temp = "";
+		sprintf(temp, "%d\t%s\t%s\t%s\t%s", master_quantities[indi], master_prod_ids[indi], master_names[indi], master_values[indi], master_package_names[indi]);
+
+		if(master_status[indi] == element_status_nonhardware){
+			nonhardwarelistarry[nonhardwareCount] = temp;
+			nonhardware_index_map[nonhardwareCount] = indi;
+			nonhardwareCount++;
+		}
+		else if(master_status[indi] == element_status_bom)
+		{
+			bomlistarry[bomCount] = temp;
+			bom_index_map[bomCount] = indi;
+			bomCount++;
+		}
+		else if(master_status[indi] == element_status_nonbom)					// Note: filters only apply to nonbom items, because in an ideal world a design would have no items that are both non-hardware and have no prod_id
+		{
+			if((master_matches_filters[indi] == 1) && (filters_active == 1))
+			{
+				filteredlistarry[filteredCount] = temp;
+				filtered_index_map[filteredCount] = indi;
+				filteredCount++;
+			}
+			else
+			{
+				nonbomlistarry[nonbomCount] = temp;
+				nonbom_index_map[nonbomCount] = indi;
+				nonbomCount++;
 			}
 		}
+		else{
+			// Problems have arisen
+		}
+	}
 
-		dlgGroup("BOM CSV for Sparkle") {
-			dlgHBoxLayout{
-				dlgVBoxLayout dlgSpacing(50);
+	sprintf(numFilteredItems, "%d", filteredCount);	// Show how many items are hidden
+
+	generateSparkleList();
+}
+
+
+if(schematic)
+{
+	exit("edit .brd; run " + ulpName);
+}
+if(board)
+{
+
+	int cnfrdres = configRead(configFile);
+	if(cnfrdres){
+		configWrite(configFile);
+	}
+
+
+	// This loop does the initial categorization of all the components. 
+	// It is based off of only existence of PROD_ID or not
+	initialGrouping();
+
+
+	categorizeElements();	// Initial categorization
+
+
+	dlgDialog("BOM Output"){
+
+		dlgTabWidget {
+			dlgTabPage("BOM View") {
+				dlgHBoxLayout {
+
+					dlgVBoxLayout{
+						// BOM items
+						dlgLabel("BOM Items");
+						dlgListView(headerString, bomlistarry, bomSelected, bomSort);
+						dlgPushButton("Move to Non-BOM") { 
+							if(bomSelected != -1)
+							{
+								master_status[bom_index_map[bomSelected]] = element_status_nonbom;
+								categorizeElements();
+							}
+						}
+					}
+
+					dlgVBoxLayout{
+						// Non-BOM items
+						dlgHBoxLayout{
+							dlgLabel("Non-BOM Items");
+							
+						}
+						// dlgStretch(1);
+						dlgListView(headerString, nonbomlistarry, nonbomSelected, nonbomSort);
+						dlgPushButton("Move to BOM"){ 
+							if(nonbomSelected != -1)
+							{
+								master_status[nonbom_index_map[nonbomSelected]] = element_status_bom;
+								categorizeElements();
+							}
+						}					
+					}
+
+					// Filters
+					dlgVBoxLayout{
+
+						dlgLabel("Welcome to the BOM utility!");
+						dlgPushButton("BOM Utility Help/Info/FAQ"){
+							dlgDialog("NBOM Utility Info"){
+							dlgLabel("This ULP lets you confidently keep track of all the elements on your board\n\
+\n\
+The main feature is the ability to change which items are considered to be part of the BOM.\n\
+There are two ways of doins this:\n\
+\t- 1) Manually move items from \"BOM Items\" to \"Non-BOM Items\" and back using the buttons below each list\n\
+\t- 2) Apply a filter on the package names to exclude them from the \"Non-BOM Items\" list.\n\
+\n\
+* Notes: \n\
+t- Items that have no PROD_ID, no contacts, and no holes are considered \"Non-Hardware\" and are excluded from BOM permanently\n\
+\t- You can toggle the filter to see what is hidden from the \"Non-BOM Items\" list\n\
+\t- Items in the \"BOM Items\" list are not affected by filters, so you can manually override a filter.\n\
+\t- A defualt ilter file is loaded on startup, if present. You can also write your own filter files and load them.\n\
+\t\t (each line of the text file is a filter entry)\n\
+\t- The sparkle output will let you know how many BOM items are missing a PROD_ID (these are not displayed in the sparkle CSV)");
+								// dlgListView("Qty\tPROD_ID\tPackage\tValue\tNames", silklistarry, silkSelected, silkSort);
+								dlgPushButton("Close"){
+									dlgAccept();
+								}
+							};
+						}
+						dlgHBoxLayout{
+							dlgVBoxLayout{
+								dlgLabel("Filters status: \n(double click to change)");
+								dlgListBox(filterStatus, filters_active) categorizeElements();
+							}
+							dlgVBoxLayout{
+								dlgLabel("Number of filtered items \n(hidden from the Non-BOM list):");
+								dlgTextView(numFilteredItems);
+							}
+						}
+						dlgPushButton("View Non-Hardware Items"){
+							dlgDialog("Non-Hardware Elements"){
+								dlgLabel("Stuff");
+								dlgListView(headerString, nonhardwarelistarry, nonhardwareSelected, nonhardwareSort);
+								dlgHBoxLayout{
+									dlgPushButton("Move to BOM"){ 
+										if(nonhardwareSelected != -1)
+										{
+											master_status[nonhardware_index_map[nonhardwareSelected]] = element_status_bom;
+											categorizeElements();
+											dlgAccept();
+										}
+									}
+									dlgPushButton("Move to Non-BOM"){ 
+										if(nonhardwareSelected != -1)
+										{
+											master_status[nonhardware_index_map[nonhardwareSelected]] = element_status_nonbom;
+											categorizeElements();
+											dlgAccept();
+										}
+									}
+								}
+								dlgPushButton("Close"){
+									dlgAccept();
+								}
+							};
+						}
+					}
+				}
+			}
+			dlgTabPage("Filter Settings") {
+				// Filter Modification
+				dlgLabel("Current Filter Strings \n(Apply only to items in the Non-BOM list - initially any item with a PROD_ID is displayed)");
+				dlgListView("Filter", filterStrings, filter_string_selected, filter_string_sort);
+				dlgPushButton("Remove from filter list"){
+					removeFromFilterList();
+					categorizeElements();
+				}
+
+				dlgLabel("Add new filters");
+				dlgTextEdit(temp_filter_string);
+				dlgPushButton("Add to filter list"){
+					addToFilterList();
+					categorizeElements();
+				}
+
+				dlgHBoxLayout{
+					dlgPushButton("Load filter cnfg file"){
+						customFilterFile = dlgFileOpen("Select a filter cnfiguration file (.flt)", path_ulp[0], "*.flt");
+						configRead(customFilterFile);
+						categorizeElements();
+					}
+					dlgPushButton("Save as default cnfg"){
+						configWrite(configFile);
+						categorizeElements();
+					}
+				}
+			}
+			dlgTabPage("Sparkle Output") {
+				dlgLabel("CSV of PROD_IDs for Sparkle");
 				dlgTextView(sparkleBOM);
+				dlgLabel("PROD_ID Status:");
+				dlgTextView(prod_id_warning);
 			}
-		}
-		
-		dlgHBoxLayout {
-			dlgStretch(1);
-			dlgPushButton ("-Close") dlgAccept(-1);
-		}
-	};
+    	}
 
-} else {
-	dlgMessageBox("Please run this ULP from the schematic.");
+
+
+
+ 		dlgGridLayout {
+
+ 			dlgCell(0, 0){ 
+ 				dlgPushButton("Done"){
+ 					setup_complete = 1;
+ 					// result = 0;
+					dlgAccept();
+				};
+			};
+ 		}
+
+	};
+	exit(0);
+}
+else
+{
+	dlgMessageBox("Please run this ulp from the board editor");
 	exit(1);
 }

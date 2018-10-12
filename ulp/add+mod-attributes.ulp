@@ -1,0 +1,251 @@
+#usage "en: <b>Modify attributes on all devices/technologies within a given library"
+"<p>Usage: run add+mod-attributes</p>"
+"<p>Author: <author>Owen Lyke </author><br />"
+"Version: <em>1.0.0</em></p>"
+"Allows you to add/remove attributes to/from all devices and variants in a library. Supports specification of constant or variable as well as defualt value"
+
+
+
+
+int MAX_NUM_ROWS = 10;
+int num_rows = 1;
+int setup_complete = 0;
+
+string 	option_strings[] 	= {"variable", "constant", "DELETE"};
+string 		labels[]		= {"Enter Label", "Enter Label", "Enter Label", "Enter Label", "Enter Label", "Enter Label", "Enter Label", "Enter Label", "Enter Label", "Enter Label"};
+int			options[] 		= {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+string 		values[] 		= {"Enter Value", "Enter Value", "Enter Value", "Enter Value", "Enter Value", "Enter Value", "Enter Value", "Enter Value", "Enter Value", "Enter Value"};
+int			overwrite_val[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+int			attr_val_pre_exists[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+
+int 	result = 0;
+
+
+// Used by set-all-devices-attribute.ulp
+string ScriptFile = "";
+string cmdScript, cmd, s;
+
+string Lines[], Attribut[], AttValue[];
+int    setAtt[];
+int    cntl = 0;
+int    cntAtt = 0;
+
+if (argv[1] == "?") {
+  dlgMessageBox(usage, "OK");
+}
+
+void test(void) {
+  dlgDialog(filename(argv[0]) + " Script") {
+    dlgTextView(cmd);
+    dlgHBoxLayout {
+      dlgPushButton("OK") dlgAccept();
+      dlgPushButton("Abbruch") { dlgReject(); exit(-2); }
+    }
+  };
+  return;
+}
+
+
+string check_varname(string s) {  // 2008-09-04
+  if(s == "''") return s;
+  return "'"+s+"'";
+}
+
+
+if(library){
+
+	// // Setup
+	while(setup_complete == 0)
+	{
+		dlgDialog("Add Attribute - Setup"){
+
+			dlgLabel("This is the Add Attribute ULP \n\n\
+You may add up to 10 rows, and must have at least one row. \n\
+Each row allows you to add or modify an attribute for ALL devices and technologies in the library. \n\
+	Label: case-insensitive label of the attribute. Also the 'name' of the attribute. \n\
+	Type: allows you to choose to set the attribute to constant or variable. Also allows removal of all attributes with the given name. \n\
+	Value: the value to fill in for each attribute. Leave as 'Enter Value' for a blank default. \n\
+	Overwrite Values: Check this box to overwrite existing values for a given label name. If not overwrite then existing values will remain. \n\
+				     ");
+
+			dlgGridLayout {
+				dlgCell(0, 0) dlgLabel("Label");
+				dlgCell(0, 1) dlgLabel("Type");
+				dlgCell(0, 2) dlgLabel("Value");
+				dlgCell(0, 3) dlgLabel("Overwrite Values?");
+
+				for(int indi = 0; indi < num_rows; indi++)
+				{
+					dlgCell(indi + 1, 0) dlgTextEdit(labels[indi]);
+					dlgCell(indi + 1, 1) dlgListBox(option_strings, options[indi]) dlgMessageBox("You have selected " + option_strings[options[indi]]);
+					dlgCell(indi + 1, 2) dlgTextEdit(values[indi]);
+					dlgCell(indi + 1, 3) dlgCheckBox("OVRWT", overwrite_val[indi]);
+				}
+				
+		 	};
+
+	 		dlgPushButton("Add Row"){
+	 			// add row
+	 			num_rows++;
+	 			if(num_rows > MAX_NUM_ROWS){ 
+	 				dlgMessageBox("No more rows allowed. Use multiple calls to this ULP"); 
+	 				num_rows = MAX_NUM_ROWS;
+	 			}
+	 			dlgAccept();
+	 		};
+	 		dlgPushButton("Remove Last Row"){
+	 			// add row
+	 			num_rows--;
+	 			if(num_rows < 1){ 
+	 				dlgMessageBox("You must have at least one row"); 
+	 				num_rows = 1;
+	 			}
+	 			dlgAccept();
+	 		};
+
+	 		dlgGridLayout {
+
+	 			dlgCell(0, 1){ 
+	 				dlgPushButton("Accept (Modify Library)"){
+	 					setup_complete = 1;
+	 					result = 0;
+						dlgAccept();
+					};
+				};
+
+				dlgCell(0, 0){ 
+	 				dlgPushButton("Cancel"){
+	 					setup_complete = 1;
+	 					result = 1;
+						dlgAccept();
+					};
+				};
+	 		}
+
+		};
+	}
+
+	// CAPSIFY!
+	for(int indi = 0; indi < num_rows; indi++)
+	{
+		labels[indi] = strupr(labels[indi]);
+	}
+
+
+	// Use the really cool code to actually set all the ATTRIBUTES by constructing a long command to execute
+	// Thanks to the original code located here: // https://github.com/plusea/EAGLE/blob/master/ulp/set-all-devices-attribute.ulp
+
+	library(L){
+
+		// readScript();
+		cmdScript = filesetext(L.name, "~.scr");
+		L.devicesets(DS) {
+			sprintf(s, "EDIT %s.DEV;\n", DS.name);
+			cmd += s;
+			int n;
+			DS.devices(D) {
+			string t[];
+			int nt = strsplit(t, D.technologies, ' ');
+			sprintf(s, "PACKAGE %s;\n", check_varname(D.name) );
+			cmd += s;
+				for (int i = 0; i < nt; i++) {
+					sprintf(s, "TECHNOLOGY %s;\n", t[i]);
+					cmd += s;
+					D.attributes(A, t[i]) {
+						
+
+						for(int indi = 0; indi < num_rows; indi++) {
+							status(DS.name+":"+D.name+":"+t[i]);
+
+							if (A.name == labels[indi]) {
+								if (strlen(A.value)){  
+									attr_val_pre_exists[indi] = 1;
+									// dlgMessageBox("found the specified attribute with a value already. Device: " + D.name + ", tech: " + t[i] + ", ATTR: " + A.name + ", value: " + A.value );
+								}
+								else
+								{
+									attr_val_pre_exists[indi] = 0;
+									// dlgMessageBox("found one with zero length!");
+								}
+							}
+						}
+					}
+
+					for(int indi = 0; indi < num_rows; indi++)	// Within each technology enumerate all the atribute commands
+					{
+						string name = labels[indi];
+						string value = values[indi];
+						string option = option_strings[options[indi]];
+
+						
+							// If modifying the new value then use "ATTRIBUTE NAME 'value' option" form
+							// Unless you have asked not to overwrite existing values
+
+						// Make sure the user actually edited the name... (and make sure it has no spaces)
+						if(name != "Enter Label"){
+
+							string array[];
+							int nw = strsplit(array, name, ' ');
+							if(nw == 1){
+
+								if(options[indi] == 2){										// If deleting an attibute then just do it!
+									sprintf(s, "ATTRIBUTE %s %s;\n", name, "DELETE");
+								}
+								else if(overwrite_val[indi]){		
+								
+									if(values[indi] != "Enter Value") 						// If overwriting and have valid new value then just use this form
+									{
+										sprintf(s, "ATTRIBUTE %s '%s' %s\n", name, value, option);
+									}
+									else													// Otherwise just overwrite the option for that attribute
+									{
+										sprintf(s, "ATTRIBUTE %s %s;\n", name, option);
+									}
+								}
+								else														// If oyu are not overwriting existing values then you are here
+								{
+									if(attr_val_pre_exists[indi]){							// A value already exists for your attribute: use the two argument form
+										// Do nothing if you don't want to overwrite and the attribute already exists with a value
+
+										// // If you wanted you could set the option to the one defined by the user, using this command:
+										// sprintf(s, "ATTRIBUTE %s %s;\n", name, option);
+									}
+									else													// No value already exists so you can specify the new value or change the option
+									{
+										if(values[indi] != "Enter Value"){
+											sprintf(s, "ATTRIBUTE %s '%s' %s\n", name, value, option);
+										}
+										else
+										{
+											sprintf(s, "ATTRIBUTE %s %s;\n", name, option);
+										}
+									}
+								}
+
+								cmd += s;
+								s = "";
+								
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+
+	output(cmdScript, "wtD") printf("%s", cmd);
+	if( result == 0 ){
+		sprintf(s, "SCRIPT '%s';\n", cmdScript);
+		exit(s);
+	}
+	else{
+		exit(1);
+	}
+
+}
+else{
+	dlgMessageBox("Please run this ULP from the library you wish to modify.");
+	exit(1);
+}
