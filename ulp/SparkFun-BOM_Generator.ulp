@@ -112,7 +112,7 @@ string prod_id_warning = "";
 string headerString = "Qty\tPROD_ID\tNames\tValue\tPackage";
 string sparkleBOM;												// A string for sparkle output
 string numFilteredItems = "";
-
+string exportFilePath = "";
 
 
 // Function definitions
@@ -133,7 +133,7 @@ int configRead(string infile) {
   if(filesize(infile)){ //Check if file exists
 
 	int indk = 0;
-	while(filterStrings[indk] != ""){
+	while(filterStrings[indk] != ""){	// Clear out old saved filter strings, if any exist
 		filterStrings[indk] = "";
 		indk++;
 	}
@@ -202,6 +202,19 @@ string pidFormat(string id_str)
 	}
 
 	return numerals;
+}
+
+string replaceCharacter(string base, char from, char to)
+{
+	string retval = base;
+	for(int indj = 0; indj < strlen(retval); indj++)
+	{
+		if(retval[indj] == from)
+		{
+			retval[indj] = to;
+		}
+	}
+	return retval;
 }
 
 void generateSparkleList()
@@ -442,8 +455,6 @@ void categorizeElements()
 	filteredCount = 0;
 	nonhardwareCount = 0;
 
-	// applyFilters();	// Sets the "is filtered" state for any elements in the NON-Bom list
-
 	// Recategorize the elements from the master lists
 	for(int indi = 0; indi < numUniqueEntries; indi++)
 	{
@@ -570,6 +581,75 @@ t- Items that have no PROD_ID, no contacts, and no holes are considered \"Non-Ha
 								}
 							};
 						}
+
+						dlgPushButton("Export BOM as CSV: "){
+							// exportFilePath = dlgFileOpen("Select directory in which to export the BOM", EAGLE_HOME, "*");
+							exportFilePath = dlgDirectory("Select directory in which to export the BOM", EAGLE_HOME);
+							
+
+							if(exportFilePath != "")
+							{
+								exportFilePath += "/bom_output.csv";
+
+								output(exportFilePath, "wt"){
+							  		string line = "Qty, PROD_ID, Names, Value, Package";
+							  		printf("%s\n", line); // Header
+							    	for(int indi = 0; indi < numUniqueEntries; indi++)
+									{
+										if(master_status[indi] == element_status_bom)
+										{
+											string local_names = replaceCharacter(master_names[indi], ',', ';');
+											string local_values = replaceCharacter(master_values[indi], ',', ';');
+											string local_prod_ids = replaceCharacter(master_prod_ids[indi], ',', ';');
+											string local_package_names = replaceCharacter(master_package_names[indi], ',', ';');
+
+											printf("%d, %s, %s, %s, %s\n", master_quantities[indi], local_prod_ids, local_names, local_values, local_package_names);
+										}
+									}
+									dlgMessageBox("File created at: " + exportFilePath);
+								}
+							    // dlgDialog("Rename Export File?")
+							    // {
+							    // 	dlgLabel("Output file created at: " + exportFilePath);
+							    // 	dlgLabel("Rename the file?");
+							    // 	dlgHBoxLayout{
+							    // 		dlgPushButton("-No"){
+							    // 			dlgAccept();
+							    // 		}
+							    // 		dlgPushButton("+Yes"){
+							    // 			string newExportFileName = "";
+											// string data[];
+										 //    int line = fileread(data, exportFilePath);
+
+										 //    dlgDialog("Enter new name: "){
+										 //    	dlgTextEdit(&newExportFileName){ dlgAccept(); };
+										 //    }
+
+										 //    output(newExportFileName){
+											//     if(line)
+											//     {
+											//     	int indi = 0;
+											//     	while(data[indi] != ""){
+											// 	    	filterStrings[indi] = data[indi];
+											// 	    	indi++;
+											// 	    }
+											//   	}
+											// }
+
+							    // 			dlgAccept();
+							    // 		}
+
+							    // 	}
+							    // };
+							}
+							else
+							{
+								dlgMessageBox("No path supplied");
+							}
+
+							exportFilePath = "";
+						}
+
 						dlgHBoxLayout{
 							dlgVBoxLayout{
 								dlgLabel("Filters status: \n(double click to change)");
