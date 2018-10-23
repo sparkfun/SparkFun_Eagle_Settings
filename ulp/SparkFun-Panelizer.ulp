@@ -154,6 +154,7 @@ int hasPartsOnLayer(int layerNumber)
 						&& containsString(E.package.name, "SMT-JUMPER") == 0
 						&& containsString(E.package.name, "USB-MICROB-PTH-MILL") == 0
 						&& containsString(E.package.name, "USB-C") == 0
+						&& containsString(E.package.name, "PAD.03X.03") == 0 //Test points
 						&& containsString(E.package.name, "PAD.03X.05") == 0
 						) 
 					{

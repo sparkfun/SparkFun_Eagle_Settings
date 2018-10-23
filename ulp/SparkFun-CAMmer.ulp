@@ -118,6 +118,7 @@ int hasPartsOnLayer(int layerNumber)
 						&& containsString(E.package.name, "SMT-JUMPER") == 0
 						&& containsString(E.package.name, "USB-MICROB-PTH-MILL") == 0
 						&& containsString(E.package.name, "USB-C") == 0
+						&& containsString(E.package.name, "PAD.03X.03") == 0 //Test points
 						&& containsString(E.package.name, "PAD.03X.05") == 0
 						) 
 					{
@@ -324,7 +325,7 @@ void createGerbers()
 		//if(x == 8) mirror = "-m+"; //Mirror the bottom paste layer
 		
 		//Add this CAM operation to the list
-		sprintf(s, " \"%s/eagle.exe\" -X -N- %s -f+ -O+ -c+ -x0 -y0 -d%s -o \"%s.%s\" \"%s\" %s",
+		sprintf(s, " \"%s/eaglecon.exe\" -X -N- %s -f+ -O+ -c+ -x0 -y0 -d%s -o \"%s.%s\" \"%s\" %s",
 			EAGLE_DIR,
 			mirror,
 			device,
@@ -476,7 +477,7 @@ if (board)
 
 		dlgHBoxLayout{ dlgCheckBox("Run gerbV upon completion", runGerbV); } 
 
-		dlgPushButton("Generate") {
+		dlgPushButton("+Generate") {
 			configWrite(); //Record current settings
 
 			createGerbers(); //Generate gerbers for this BRD
