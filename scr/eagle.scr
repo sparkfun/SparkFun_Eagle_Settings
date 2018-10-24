@@ -13,6 +13,8 @@ Assign AF7 'Group';
 Assign F8 'Copy';
 Assign F10 'Grid inch 0.05 on; Grid alt inch 0.005;';
 Assign AF10 'Grid mm 1 on; Grid alt mm 0.1;';
+Assign CS+A 'run SparkFun-AutoChecklist.ulp;';
+Assign CS+S 'run SparkFun-AutoChecklist-Schematic.ulp;';
 
 Grid inch 0.05 on;
 Grid alt inch 0.005;
