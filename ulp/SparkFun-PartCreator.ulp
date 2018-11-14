@@ -459,8 +459,8 @@ void createFootprint()
         {
             padRotation = 90;
 
-			pinLocationY = (partWidth/2.0 - padInset - pinSizeX/2) * -1;
-            padLocationY = (partWidth/2.0  + padOffset) * -1;
+			pinLocationY = (partHeight/2.0 - padInset - pinSizeX/2) * -1;
+            padLocationY = (partHeight/2.0  + padOffset) * -1;
 
             int padsPerSide = numberOfPads_Lower;
 
@@ -490,8 +490,8 @@ void createFootprint()
         {
             padRotation = 270;
 
-			pinLocationY = partWidth/2.0 - padInset - pinSizeX/2;
-            padLocationY = partWidth/2.0  + padOffset;
+			pinLocationY = partHeight/2.0 - padInset - pinSizeX/2;
+            padLocationY = partHeight/2.0  + padOffset;
 
             int padsPerSide = numberOfPads_Upper;
 
