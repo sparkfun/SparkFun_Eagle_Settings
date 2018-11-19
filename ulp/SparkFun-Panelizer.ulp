@@ -1032,6 +1032,15 @@ if (board)
 				horizontalGap = convertMMToInches(horizontalGap);
 			}
 			
+			if(panelSizeX > 11.8 || panelSizeY > 11.8)
+			{
+				if(dlgMessageBox("Generally, the max X or Y dimension is 11.8\". This is a big panel and may cost extra. Do you wish to continue?", "&Yes", "&No") != 0)
+				{
+					//Bail
+					exit(-1);
+				}
+			}
+   
 			panelizer(); //Create the panel
 
 			orderingInstructionsWrite(); //Record board characteristics
