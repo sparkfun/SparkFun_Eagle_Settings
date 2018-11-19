@@ -156,6 +156,7 @@ int hasPartsOnLayer(int layerNumber)
 						&& containsString(E.package.name, "USB-C") == 0
 						&& containsString(E.package.name, "PAD.03X.03") == 0 //Test points
 						&& containsString(E.package.name, "PAD.03X.05") == 0
+						&& containsString(E.package.name, "USB-SOLDER-PADS") == 0
 						) 
 					{
 						//String not found, this is a legit part
