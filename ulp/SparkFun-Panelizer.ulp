@@ -463,7 +463,6 @@ void panelizer() {
 			}
 		}
 	}
-		exit(bigScript);
 	
 	if(drawPanelBorders == 1)
 	{
