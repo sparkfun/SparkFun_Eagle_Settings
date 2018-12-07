@@ -27,6 +27,7 @@ int 		generateTopStencil = 0;
 int 		generateBottomStencil = 0;
 int			panelUnits = 0; //Default to inches
 int 		panelMustBeLargerThanDimension = 0; //Default to 'must be less than'
+real 		copyOversizeAmount = 0.15; //Amount of overhang the copy box should have around the max dimensions calculated from the board
 
 void configWrite(){
   output(configFile){
@@ -41,6 +42,7 @@ void configWrite(){
 	printf("%d\n", generateBottomStencil);
 	printf("%d\n", panelUnits);
 	printf("%d\n", panelMustBeLargerThanDimension);
+    printf("%.5f\n", copyOversizeAmount);
   }
 }
 
@@ -60,11 +62,11 @@ void configRead() {
       generateBottomStencil	= strtol(data[8]);
 	  panelUnits					= strtol(data[9]);
 	  panelMustBeLargerThanDimension				= strtol(data[10]);
+      copyOversizeAmount				= strtod(data[11]);
     }
   }
 }
 
-real copyOversizeAmount = 0.5;
 real designWidth; //In inches
 real designHeight;
 real xMax = 0;
@@ -461,6 +463,7 @@ void panelizer() {
 			}
 		}
 	}
+		exit(bigScript);
 	
 	if(drawPanelBorders == 1)
 	{
@@ -569,6 +572,7 @@ void panelizer() {
 
 		bigScript += "LAYER 1;\n"; //Top layer
 	}
+
 
 	//Load the appropriate DRC
 	if(hasFourLayers() == 0)
@@ -957,6 +961,7 @@ if (board)
 				dlgRedisplay();
 			}
 		}
+
 		dlgGroup("Panel Size") {
 			dlgRadioButton("Must be smaller than", panelMustBeLargerThanDimension);
 			dlgRadioButton("Must be larger than", panelMustBeLargerThanDimension);
@@ -964,27 +969,33 @@ if (board)
 			dlgHBoxLayout{ dlgLabel("X:\t");       dlgRealEdit(panelSizeX, 1, 600); } 
 			dlgHBoxLayout{ dlgLabel("Y:\t");       dlgRealEdit(panelSizeY, 1, 600); } 
 		}
+
 		dlgGroup("Gaps") {
 
-		if(overHangingParts == "true")
-		{
-			dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This board has overhanging parts\t"); } 
-			dlgHBoxLayout{ dlgLabel("PCBWay & JLCPCB: 3mm min routeout gap\t"); } 
-			if(verticalGapNeeded > 0)
+			if(overHangingParts == "true")
 			{
-				dlgHBoxLayout{ dlgLabel(verticalGapString, 1); }  //Change with redisplay
+				dlgHBoxLayout{ dlgLabel("<font color=red>Note:</font> This board has overhanging parts\t"); } 
+				dlgHBoxLayout{ dlgLabel("PCBWay & JLCPCB: 3mm min routeout gap\t"); } 
+				if(verticalGapNeeded > 0)
+				{
+					dlgHBoxLayout{ dlgLabel(verticalGapString, 1); }  //Change with redisplay
+				}
+
+				if(horizontalGapNeeded > 0)
+				{
+					dlgHBoxLayout{ dlgLabel(horizontalGapString, 1); }  //Change with redisplay
+				}
 			}
 
-			if(horizontalGapNeeded > 0)
-			{
-				dlgHBoxLayout{ dlgLabel(horizontalGapString, 1); }  //Change with redisplay
-			}
-		}
-
-		dlgHBoxLayout{ dlgLabel("Vertical Gap:\t");         	dlgRealEdit(verticalGap, 0.0, 15); } 
-		dlgHBoxLayout{ dlgLabel("Horizontal Gap:\t");       	dlgRealEdit(horizontalGap, 0.0, 15); } 
+			dlgHBoxLayout{ dlgLabel("Vertical Gap:\t");         	dlgRealEdit(verticalGap, 0.0, 15); } 
+			dlgHBoxLayout{ dlgLabel("Horizontal Gap:\t");       	dlgRealEdit(horizontalGap, 0.0, 15); } 
 		}
 		  
+		dlgGroup("Copy Frame Size") {
+			dlgHBoxLayout{ dlgLabel("Boards with part origins outside the dimension outline may be missed. \nIncrease the oversize amount to increase the copy frame size to capture them.\t"); } 
+			dlgHBoxLayout{ dlgLabel("Copy Oversize Amount:\t");       	dlgRealEdit(copyOversizeAmount, 0.0, 15); } 
+		}
+
 		dlgGroup("Extra Production Bits") {
 			dlgHBoxLayout{ dlgCheckBox("Add Panel Borders and Fiducials", drawPanelBorders); } 
 			dlgHBoxLayout{ dlgCheckBox("Add V-score Lines and Text", vScoreIndicators); } 
@@ -1015,7 +1026,7 @@ if (board)
 			dlgHBoxLayout{ dlgCheckBox("Run CAM after panelization", runCAM); } 
 		}
 
-		dlgPushButton("&Generate") {
+		dlgPushButton("+&Generate") {
 
 			if( (horizontalGap > 0.02 && horizontalGap < 0.12) || (verticalGap > 0.02 && verticalGap < 0.12) )
 				dlgMessageBox("PCBWay requires 0.12\" or 3mm min distance for route outs. This panel may fail review.");
