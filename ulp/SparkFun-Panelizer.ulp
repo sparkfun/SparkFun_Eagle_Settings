@@ -27,7 +27,6 @@ int 		generateTopStencil = 0;
 int 		generateBottomStencil = 0;
 int			panelUnits = 0; //Default to inches
 int 		panelMustBeLargerThanDimension = 0; //Default to 'must be less than'
-real 		copyOversizeAmount = 0.15; //Amount of overhang the copy box should have around the max dimensions calculated from the board
 
 void configWrite(){
   output(configFile){
@@ -42,7 +41,6 @@ void configWrite(){
 	printf("%d\n", generateBottomStencil);
 	printf("%d\n", panelUnits);
 	printf("%d\n", panelMustBeLargerThanDimension);
-    printf("%.5f\n", copyOversizeAmount);
   }
 }
 
@@ -62,7 +60,6 @@ void configRead() {
       generateBottomStencil	= strtol(data[8]);
 	  panelUnits					= strtol(data[9]);
 	  panelMustBeLargerThanDimension				= strtol(data[10]);
-      copyOversizeAmount				= strtod(data[11]);
     }
   }
 }
@@ -73,6 +70,10 @@ real xMax = 0;
 real yMax = 0;
 real xMin = 0;
 real yMin = 0;
+real xOutlyingMax = -100;
+real xOutlyingMin = 100;
+real yOutlyingMax = -100;
+real yOutlyingMin = 100;
 
 real panelWidth = 0;
 real panelHeight = 0;
@@ -291,6 +292,38 @@ string getBoardColor()
 	return("Unknown");
 }
 
+//Look at the origins for all the elements. Find the largest outlying coordinate.
+//These values are used to appropriately set the oversize amount of the copy frame
+void getOutlyingOrigins()
+{
+	real outlyingCoordinate = 0;
+	board(B) {
+		B.elements(E) {
+		
+			//There are some elements we need to ignore, for example the
+			//Special instruction box is all tDocu and always far outside the board outline
+			if(E.package.name == "CREATIVE_COMMONS"	|| E.package.name == "ORDERING_INSTRUCTIONS") {
+				//Ignore the location of this element
+			}
+			else{
+					
+				//Find the largest outlying coordinate
+				if(u2inch(E.x) > xOutlyingMax) xOutlyingMax = u2inch(E.x);
+				if(u2inch(E.x) < xOutlyingMin) xOutlyingMin = u2inch(E.x);
+				if(u2inch(E.y) > yOutlyingMax) yOutlyingMax = u2inch(E.y);
+				if(u2inch(E.y) < yOutlyingMin) yOutlyingMin = u2inch(E.y);
+				
+			}//End ignore list
+		}//End Elements
+    }
+	
+	//Increase outliers to at least the x/y Min/Max values
+	if(xMax > xOutlyingMax) xOutlyingMax = xMax;
+	if(xMin < xOutlyingMin) xOutlyingMin = xMin;
+	if(yMax > yOutlyingMax) yOutlyingMax = yMax;
+	if(yMin < yOutlyingMin) yOutlyingMin = yMin;
+}
+
 //Assumes all variables have been set to inch units
 void panelizer() {
 	
@@ -298,7 +331,7 @@ void panelizer() {
 
 	real borderWidth = 0;
 	if(drawPanelBorders == 1) borderWidth = 0.25;
-
+	
 	//Calculate the number of copies we need to achieve our min panel size
 	while( (numberOfColumns * (designWidth + verticalGap) + verticalGap) + (borderWidth * 2) < panelSizeX) numberOfColumns++;
 	while( (numberOfRows * (designHeight + horizontalGap) + horizontalGap)  + (borderWidth * 2) < panelSizeY) numberOfRows++;
@@ -308,7 +341,6 @@ void panelizer() {
 		 numberOfRows--;
 	}
 
-	
 	//numberOfRows = ceil(panelSizeY / (designHeight + horizontalGap));
 	//if(numberOfRows * (designHeight + horizontalGap) + horizontalGap < panelSizeY) numberOfRows++;
 	
@@ -323,11 +355,15 @@ void panelizer() {
     //Tun on all layers for copying
     bigScript += "DISPLAY ALL;\n"; //Copy everything
 
+	getOutlyingOrigins(); //Find the origins of any element that fall outside the dimension lines
+
+	real copyOversizeAmount = 0.05; //Amount of overhang past the outlying origins
+
     //Draw a box slightly larger that the dimensions of the board
-	real lowerX = xMin - copyOversizeAmount;
-	real lowerY = yMin - copyOversizeAmount;
-	real upperX = xMax + copyOversizeAmount;
-	real upperY = yMax + copyOversizeAmount;
+	real lowerX = xOutlyingMin - copyOversizeAmount;
+	real lowerY = yOutlyingMin - copyOversizeAmount;
+	real upperX = xOutlyingMax + copyOversizeAmount;
+	real upperY = yOutlyingMax + copyOversizeAmount;
 	
     bigScript += "GRID INCH 0.05 ON;\n";
 
@@ -990,11 +1026,6 @@ if (board)
 			dlgHBoxLayout{ dlgLabel("Horizontal Gap:\t");       	dlgRealEdit(horizontalGap, 0.0, 15); } 
 		}
 		  
-		dlgGroup("Copy Frame Size") {
-			dlgHBoxLayout{ dlgLabel("Boards with part origins outside the dimension outline may be missed. \nIncrease the oversize amount to increase the copy frame size to capture them.\t"); } 
-			dlgHBoxLayout{ dlgLabel("Copy Oversize Amount:\t");       	dlgRealEdit(copyOversizeAmount, 0.0, 15); } 
-		}
-
 		dlgGroup("Extra Production Bits") {
 			dlgHBoxLayout{ dlgCheckBox("Add Panel Borders and Fiducials", drawPanelBorders); } 
 			dlgHBoxLayout{ dlgCheckBox("Add V-score Lines and Text", vScoreIndicators); } 
