@@ -255,6 +255,7 @@ t- Items that have no PROD_ID, no contacts, and no holes are considered \"Non-Ha
 				}
 			}
 			dlgTabPage("Sparkle Output") {
+				dlgLabel("*Reminder* Don't forget to add a PCB part to the BOM in Sparkle");
 				dlgLabel("CSV of PROD_IDs for Sparkle");
 				dlgTextView(sparkleBOM);
 				dlgLabel("PROD_ID Status:");
