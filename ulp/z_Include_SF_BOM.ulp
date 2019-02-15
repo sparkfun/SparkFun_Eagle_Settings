@@ -295,13 +295,13 @@ int getStatus(UL_ELEMENT E)
 
 
 	// Now take your info and make a decision about the status of the element:
-	if(is_dnp || isALabel)
-	{
-		this_status = element_status_nonhardware;
-	}
-	else if(has_pid)
+	if(has_pid)
 	{
 		this_status = element_status_bom;	// Has pid and IS hardware then its on the BOM
+	}
+	else if(is_dnp || isALabel)					
+	{
+		this_status = element_status_nonhardware;
 	}
 	else
 	{
