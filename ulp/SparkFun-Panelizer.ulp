@@ -982,11 +982,6 @@ void orderingInstructionsWrite()
 			printf("filename to layer stackup 1/2/3/4: GTL, G2L, G3L, GBL\n");
 		}
 	}
-
-	string s;
-	sprintf(s, "Width: %fmm / %fin\n", minDrillSize, convertMMToInches(minDrillSize));
-	dlgMessageBox(s);
-	exit(1);
 }
 
 //Check for unrouted nets
