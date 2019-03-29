@@ -979,7 +979,7 @@ void orderingInstructionsWrite()
 		printf("min drill size, %fmm / %fin\n", minDrillSize, convertMMToInches(minDrillSize));
 		if (numberOfLayers > 2)
 		{
-			printf("filename to layer stackup 1/2/3/4: GTL, G2L, G3L, GBL\n");
+			printf("filename to layer stackup 1/2/3/4: GTL, GL2, GL3, GBL\n");
 		}
 	}
 }
