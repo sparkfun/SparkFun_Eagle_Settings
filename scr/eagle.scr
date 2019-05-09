@@ -44,6 +44,9 @@ CHANGE DUNIT INCH OFF #BHW Change default units to inches [ON | OFF] [precision]
 SET PALETTE BLACK;
 
 #Layer colors
+Set palette  1 0xB43232C8; #classic dark blue
+Set palette  2 0xB432C832; #classic green
+Set palette  4 0xB4C83232; #classic dark red
 Set palette 16 0xFFFFFFFF; #Super white
 Set palette 24 0xFFC0C0C0; #Grey - color used when text is selected (anti palette location 16)
 Set color_layer 1 4;   #Set top layer to dark red
