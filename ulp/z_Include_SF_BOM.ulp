@@ -152,6 +152,8 @@ void addToFilterList()
 	}
 }
 
+//Strip off the alpha pre bits
+//Remove leading zeros
 string pidFormat(string id_str)
 {
 	string numeral_entries[];
@@ -205,7 +207,12 @@ void generateSparkleList()
 		{
 			sprintf(temp, "%s", idNUM);
 		}
-		sparkleBOM += temp;
+
+		//Print multiple of this PROD_ID to indicate the qty of the item
+		for (int x = 0; x < master_quantities[bom_index_map[indi]]; x++)
+		{
+			sparkleBOM += temp;
+		}
 	}
 
 	if (invalidPIDcount)
