@@ -1,8 +1,7 @@
 #usage "en: <b>Outputs the contents of a design to Sparkle Friendly list</b> "
 "<p>Usage: run SparkFun-BOM_Generator</p>"
-"<p>Author: <author>Owen Lyke, Nathan Seidle &lt;owen.lyke@sparkfun.com&gt;</author><br />"
-"Version: <em>1.0</em></p>"
-
+	"<p>Author: <author>Owen Lyke, Nathan Seidle &lt;owen.lyke@sparkfun.com&gt;</author><br />"
+	"Version: <em>1.0</em></p>"
 
 /*
 
@@ -12,7 +11,6 @@
 "Version: <em>1.0</em></p>"
 
 */
-
 
 // Modified October 2018, Owen Lyke
 /*
@@ -30,74 +28,76 @@ Modification goals:
 
 */
 
-
 #include "z_Include_SF_BOM.ulp"
 
-
-if(schematic)
+	if (schematic)
 {
 	exit("edit .brd; run " + ulpName);
 }
-if(board)
+if (board)
 {
 
 	int cnfrdres = configRead(configFile);
-	if(cnfrdres){
+	if (cnfrdres)
+	{
 		configWrite(configFile);
 	}
 
-
-	// This loop does the initial categorization of all the components. 
+	// This loop does the initial categorization of all the components.
 	// It is based off of only existence of PROD_ID or not
 	initialGrouping();
 
-
-	categorizeElements();	// Initial categorization
-
+	categorizeElements(); // Initial categorization
 
 	dlgDialog("BOM Output"){
 
-		dlgTabWidget {
-			dlgTabPage("BOM View") {
-				dlgHBoxLayout {
+		dlgTabWidget{
+			dlgTabPage("BOM View"){
+				dlgHBoxLayout{
 
 					dlgVBoxLayout{
 						// BOM items
 						dlgLabel("BOM Items");
-						dlgListView(headerString, bomlistarry, bomSelected, bomSort);
-						dlgPushButton("Move to Non-BOM") { 
-							if(bomSelected != -1)
-							{
-								master_status[bom_index_map[bomSelected]] = element_status_nonbom;
-								categorizeElements();
-							}
-						}
-					}
+	dlgListView(headerString, bomlistarry, bomSelected, bomSort);
+	dlgPushButton("Move to Non-BOM")
+	{
+		if (bomSelected != -1)
+		{
+			master_status[bom_index_map[bomSelected]] = element_status_nonbom;
+			categorizeElements();
+		}
+	}
+}
 
-					dlgVBoxLayout{
-						// Non-BOM items
-						dlgHBoxLayout{
-							dlgLabel("Non-BOM Items");
-							
-						}
-						// dlgStretch(1);
-						dlgListView(headerString, nonbomlistarry, nonbomSelected, nonbomSort);
-						dlgPushButton("Move to BOM"){ 
-							if(nonbomSelected != -1)
-							{
-								master_status[nonbom_index_map[nonbomSelected]] = element_status_bom;
-								categorizeElements();
-							}
-						}					
-					}
+dlgVBoxLayout
+{
+	// Non-BOM items
+	dlgHBoxLayout
+	{
+		dlgLabel("Non-BOM Items");
+	}
+	// dlgStretch(1);
+	dlgListView(headerString, nonbomlistarry, nonbomSelected, nonbomSort);
+	dlgPushButton("Move to BOM")
+	{
+		if (nonbomSelected != -1)
+		{
+			master_status[nonbom_index_map[nonbomSelected]] = element_status_bom;
+			categorizeElements();
+		}
+	}
+}
 
-					// Filters
-					dlgVBoxLayout{
+// Filters
+dlgVBoxLayout
+{
 
-						dlgLabel("Welcome to the BOM utility!");
-						dlgPushButton("BOM Utility Help/Info/FAQ"){
-							dlgDialog("NBOM Utility Info"){
-							dlgLabel("This ULP lets you confidently keep track of all the elements on your board\n\
+	dlgLabel("Welcome to the BOM utility!");
+	dlgPushButton("BOM Utility Help/Info/FAQ")
+	{
+		dlgDialog("NBOM Utility Info")
+		{
+			dlgLabel("This ULP lets you confidently keep track of all the elements on your board\n\
 \n\
 The main feature is the ability to change which items are considered to be part of the BOM.\n\
 There are two ways of doins this:\n\
@@ -111,174 +111,192 @@ t- Items that have no PROD_ID, no contacts, and no holes are considered \"Non-Ha
 \t- A defualt ilter file is loaded on startup, if present. You can also write your own filter files and load them.\n\
 \t\t (each line of the text file is a filter entry)\n\
 \t- The sparkle output will let you know how many BOM items are missing a PROD_ID (these are not displayed in the sparkle CSV)");
-								// dlgListView("Qty\tPROD_ID\tPackage\tValue\tNames", silklistarry, silkSelected, silkSort);
-								dlgPushButton("Close"){
-									dlgAccept();
-								}
-							};
-						}
+			// dlgListView("Qty\tPROD_ID\tPackage\tValue\tNames", silklistarry, silkSelected, silkSort);
+			dlgPushButton("Close")
+			{
+				dlgAccept();
+			}
+		};
+	}
 
-						dlgPushButton("Export BOM as CSV: "){
-							// exportFilePath = dlgFileOpen("Select directory in which to export the BOM", EAGLE_HOME, "*");
-							exportFilePath = dlgDirectory("Select directory in which to export the BOM", EAGLE_HOME);
-							
+	dlgPushButton("Export BOM as CSV: ")
+	{
+		// exportFilePath = dlgFileOpen("Select directory in which to export the BOM", EAGLE_HOME, "*");
+		exportFilePath = dlgDirectory("Select directory in which to export the BOM", EAGLE_HOME);
 
-							if(exportFilePath != "")
-							{
-								exportFilePath += "/bom_output.csv";
+		if (exportFilePath != "")
+		{
+			exportFilePath += "/bom_output.csv";
 
-								output(exportFilePath, "wt"){
-							  		string line = "Qty, PROD_ID, Names, Value, Package";
-							  		printf("%s\n", line); // Header
-							    	for(int indi = 0; indi < numUniqueEntries; indi++)
-									{
-										if(master_status[indi] == element_status_bom)
-										{
-											string local_names = replaceCharacter(master_names[indi], ',', ';');
-											string local_values = replaceCharacter(master_values[indi], ',', ';');
-											string local_prod_ids = replaceCharacter(master_prod_ids[indi], ',', ';');
-											string local_package_names = replaceCharacter(master_package_names[indi], ',', ';');
+			output(exportFilePath, "wt")
+			{
+				string line = "Qty, PROD_ID, Names, Value, Package";
+				printf("%s\n", line); // Header
+				for (int indi = 0; indi < numUniqueEntries; indi++)
+				{
+					if (master_status[indi] == element_status_bom)
+					{
+						string local_names = replaceCharacter(master_names[indi], ',', ';');
+						string local_values = replaceCharacter(master_values[indi], ',', ';');
+						string local_prod_ids = replaceCharacter(master_prod_ids[indi], ',', ';');
+						string local_package_names = replaceCharacter(master_package_names[indi], ',', ';');
 
-											printf("%d, %s, %s, %s, %s\n", master_quantities[indi], local_prod_ids, local_names, local_values, local_package_names);
-										}
-									}
-									dlgMessageBox("File created at: " + exportFilePath);
-								}
-							    // dlgDialog("Rename Export File?")
-							    // {
-							    // 	dlgLabel("Output file created at: " + exportFilePath);
-							    // 	dlgLabel("Rename the file?");
-							    // 	dlgHBoxLayout{
-							    // 		dlgPushButton("-No"){
-							    // 			dlgAccept();
-							    // 		}
-							    // 		dlgPushButton("+Yes"){
-							    // 			string newExportFileName = "";
-											// string data[];
-										 //    int line = fileread(data, exportFilePath);
-
-										 //    dlgDialog("Enter new name: "){
-										 //    	dlgTextEdit(&newExportFileName){ dlgAccept(); };
-										 //    }
-
-										 //    output(newExportFileName){
-											//     if(line)
-											//     {
-											//     	int indi = 0;
-											//     	while(data[indi] != ""){
-											// 	    	filterStrings[indi] = data[indi];
-											// 	    	indi++;
-											// 	    }
-											//   	}
-											// }
-
-							    // 			dlgAccept();
-							    // 		}
-
-							    // 	}
-							    // };
-							}
-							else
-							{
-								dlgMessageBox("No path supplied");
-							}
-
-							exportFilePath = "";
-						}
-
-						dlgHBoxLayout{
-							dlgVBoxLayout{
-								dlgLabel("Filters status: \n(double click to change)");
-								dlgListBox(filterStatus, filters_active) categorizeElements();
-							}
-							dlgVBoxLayout{
-								dlgLabel("Number of filtered items \n(hidden from the Non-BOM list):");
-								dlgTextView(numFilteredItems);
-							}
-						}
-						dlgPushButton("View Non-Hardware Items"){
-							dlgDialog("Non-Hardware Elements"){
-								dlgLabel("Stuff");
-								dlgListView(headerString, nonhardwarelistarry, nonhardwareSelected, nonhardwareSort);
-								dlgHBoxLayout{
-									dlgPushButton("Move to BOM"){ 
-										if(nonhardwareSelected != -1)
-										{
-											master_status[nonhardware_index_map[nonhardwareSelected]] = element_status_bom;
-											categorizeElements();
-											dlgAccept();
-										}
-									}
-									dlgPushButton("Move to Non-BOM"){ 
-										if(nonhardwareSelected != -1)
-										{
-											master_status[nonhardware_index_map[nonhardwareSelected]] = element_status_nonbom;
-											categorizeElements();
-											dlgAccept();
-										}
-									}
-								}
-								dlgPushButton("Close"){
-									dlgAccept();
-								}
-							};
-						}
+						printf("%d, %s, %s, %s, %s\n", master_quantities[indi], local_prod_ids, local_names, local_values, local_package_names);
 					}
 				}
+				dlgMessageBox("File created at: " + exportFilePath);
 			}
-			dlgTabPage("Filter Settings") {
-				// Filter Modification
-				dlgLabel("Current Filter Strings \n(Apply only to items in the Non-BOM list - initially any item with a PROD_ID is displayed)");
-				dlgListView("Filter", filterStrings, filter_string_selected, filter_string_sort);
-				dlgPushButton("Remove from filter list"){
-					removeFromFilterList();
-					categorizeElements();
-				}
+			// dlgDialog("Rename Export File?")
+			// {
+			// 	dlgLabel("Output file created at: " + exportFilePath);
+			// 	dlgLabel("Rename the file?");
+			// 	dlgHBoxLayout{
+			// 		dlgPushButton("-No"){
+			// 			dlgAccept();
+			// 		}
+			// 		dlgPushButton("+Yes"){
+			// 			string newExportFileName = "";
+			// string data[];
+			//    int line = fileread(data, exportFilePath);
 
-				dlgLabel("Add new filters");
-				dlgTextEdit(temp_filter_string);
-				dlgPushButton("Add to filter list"){
-					addToFilterList();
-					categorizeElements();
-				}
+			//    dlgDialog("Enter new name: "){
+			//    	dlgTextEdit(&newExportFileName){ dlgAccept(); };
+			//    }
 
-				dlgHBoxLayout{
-					dlgPushButton("Load filter cnfg file"){
-						customFilterFile = dlgFileOpen("Select a filter cnfiguration file (.flt)", path_ulp[0], "*.flt");
-						configRead(customFilterFile);
+			//    output(newExportFileName){
+			//     if(line)
+			//     {
+			//     	int indi = 0;
+			//     	while(data[indi] != ""){
+			// 	    	filterStrings[indi] = data[indi];
+			// 	    	indi++;
+			// 	    }
+			//   	}
+			// }
+
+			// 			dlgAccept();
+			// 		}
+
+			// 	}
+			// };
+		}
+		else
+		{
+			dlgMessageBox("No path supplied");
+		}
+
+		exportFilePath = "";
+	}
+
+	dlgHBoxLayout
+	{
+		dlgVBoxLayout
+		{
+			dlgLabel("Filters status: \n(double click to change)");
+			dlgListBox(filterStatus, filters_active) categorizeElements();
+		}
+		dlgVBoxLayout
+		{
+			dlgLabel("Number of filtered items \n(hidden from the Non-BOM list):");
+			dlgTextView(numFilteredItems);
+		}
+	}
+	dlgPushButton("View Non-Hardware Items")
+	{
+		dlgDialog("Non-Hardware Elements")
+		{
+			dlgLabel("Stuff");
+			dlgListView(headerString, nonhardwarelistarry, nonhardwareSelected, nonhardwareSort);
+			dlgHBoxLayout
+			{
+				dlgPushButton("Move to BOM")
+				{
+					if (nonhardwareSelected != -1)
+					{
+						master_status[nonhardware_index_map[nonhardwareSelected]] = element_status_bom;
 						categorizeElements();
+						dlgAccept();
 					}
-					dlgPushButton("Save as default cnfg"){
-						configWrite(configFile);
+				}
+				dlgPushButton("Move to Non-BOM")
+				{
+					if (nonhardwareSelected != -1)
+					{
+						master_status[nonhardware_index_map[nonhardwareSelected]] = element_status_nonbom;
 						categorizeElements();
+						dlgAccept();
 					}
 				}
 			}
-			dlgTabPage("Sparkle Output") {
-				dlgLabel("*Reminder* Don't forget to add a PCB part to the BOM in Sparkle");
-				dlgLabel("CSV of PROD_IDs for Sparkle");
-				dlgTextView(sparkleBOM);
-				dlgLabel("PROD_ID Status:");
-				dlgTextView(prod_id_warning);
+			dlgPushButton("Close")
+			{
+				dlgAccept();
 			}
-    	}
+		};
+	}
+}
+}
+}
+dlgTabPage("Filter Settings")
+{
+	// Filter Modification
+	dlgLabel("Current Filter Strings \n(Apply only to items in the Non-BOM list - initially any item with a PROD_ID is displayed)");
+	dlgListView("Filter", filterStrings, filter_string_selected, filter_string_sort);
+	dlgPushButton("Remove from filter list")
+	{
+		removeFromFilterList();
+		categorizeElements();
+	}
 
+	dlgLabel("Add new filters");
+	dlgTextEdit(temp_filter_string);
+	dlgPushButton("Add to filter list")
+	{
+		addToFilterList();
+		categorizeElements();
+	}
 
+	dlgHBoxLayout
+	{
+		dlgPushButton("Load filter cnfg file")
+		{
+			customFilterFile = dlgFileOpen("Select a filter cnfiguration file (.flt)", path_ulp[0], "*.flt");
+			configRead(customFilterFile);
+			categorizeElements();
+		}
+		dlgPushButton("Save as default cnfg")
+		{
+			configWrite(configFile);
+			categorizeElements();
+		}
+	}
+}
+dlgTabPage("Sparkle Output")
+{
+	dlgLabel("*Reminder* Don't forget to add a PCB part to the BOM in Sparkle");
+	dlgLabel("CSV of PROD_IDs for Sparkle");
+	dlgTextView(sparkleBOM);
+	dlgLabel("PROD_ID Status:");
+	dlgTextView(prod_id_warning);
+}
+}
 
+dlgGridLayout
+{
 
- 		dlgGridLayout {
-
- 			dlgCell(0, 0){ 
- 				dlgPushButton("Done"){
- 					setup_complete = 1;
- 					// result = 0;
-					dlgAccept();
-				};
-			};
- 		}
-
+	dlgCell(0, 0)
+	{
+		dlgPushButton("Done")
+		{
+			setup_complete = 1;
+			// result = 0;
+			dlgAccept();
+		};
 	};
-	exit(0);
+}
+}
+;
+exit(0);
 }
 else
 {
