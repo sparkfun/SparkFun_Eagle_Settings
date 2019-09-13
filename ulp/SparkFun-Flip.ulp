@@ -33,7 +33,7 @@ void flip() {
     bigScript += s;
 	
 	//Return grid to original settings
-	if(originalGridUnit == 1) //mm
+	if(originalGridUnit == GRID_UNIT_MM) //mm
 	{
 		sprintf(s, "GRID MM %.2f ON;\n", originalGridDistance);
 		bigScript += s;
