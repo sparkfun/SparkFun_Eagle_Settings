@@ -15,17 +15,15 @@ real yMin = 0;
 void flip() {
 	//Determine the current grid type and size
 	int originalGridUnit; //1 = mm, 3 = inches
-	real originalGridDistance;
 	board(B) {
 		originalGridUnit = B.grid.unit;
-		originalGridDistance = B.grid.distance;
 	}
 	
 	//Turn on everything. Group everything.
     bigScript += "DISPLAY ALL; GROUP ALL;\n";
 
 	//Change grid to inches
-    bigScript += "GRID INCH 0.05 ON; GRID ALT INCH 0.005;\n";
+    bigScript += "GRID INCH ON;\n";
 	
     //Mirror everything around the mid point of this design
     string s = "";
@@ -35,23 +33,19 @@ void flip() {
 	//Return grid to original settings
 	if(originalGridUnit == GRID_UNIT_MIC) //mic
 	{
-		sprintf(s, "GRID MIC %.2f ON;\n", originalGridDistance);
-		bigScript += s;
+		bigScript += "GRID MIC ON;\n";
 	}
 	if(originalGridUnit == GRID_UNIT_MM) //mm
 	{
-		sprintf(s, "GRID MM %.2f ON;\n", originalGridDistance);
-		bigScript += s;
+		bigScript += "GRID MM ON;\n";
 	}
 	if(originalGridUnit == GRID_UNIT_MIL) //mil
 	{
-		sprintf(s, "GRID MIL %.2f ON;\n", originalGridDistance);
-		bigScript += s;
+		bigScript += "GRID MIL ON;\n";
 	}
 	if(originalGridUnit == GRID_UNIT_INCH) //inch
 	{
-		sprintf(s, "GRID IN %.6f ON;\n", originalGridDistance);
-		bigScript += s;
+		bigScript += "GRID IN ON;\n";
 	}
 
 	//Turn on default layers
