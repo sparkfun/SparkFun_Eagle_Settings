@@ -33,9 +33,24 @@ void flip() {
     bigScript += s;
 	
 	//Return grid to original settings
+	if(originalGridUnit == GRID_UNIT_MIC) //mic
+	{
+		sprintf(s, "GRID MIC %.2f ON;\n", originalGridDistance);
+		bigScript += s;
+	}
 	if(originalGridUnit == GRID_UNIT_MM) //mm
 	{
 		sprintf(s, "GRID MM %.2f ON;\n", originalGridDistance);
+		bigScript += s;
+	}
+	if(originalGridUnit == GRID_UNIT_MIL) //mil
+	{
+		sprintf(s, "GRID MIL %.2f ON;\n", originalGridDistance);
+		bigScript += s;
+	}
+	if(originalGridUnit == GRID_UNIT_INCH) //inch
+	{
+		sprintf(s, "GRID IN %.6f ON;\n", originalGridDistance);
 		bigScript += s;
 	}
 
