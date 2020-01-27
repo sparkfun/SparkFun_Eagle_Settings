@@ -370,7 +370,6 @@ void getOutlyingOrigins()
 //Assumes all variables have been set to inch units
 void panelizer()
 {
-
 	string s = "";
 
 	real borderWidth = 0;
@@ -416,11 +415,11 @@ void panelizer()
 
 	bigScript += "GRID INCH 0.05 ON;\n";
 
-	sprintf(s, "GROUP (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n", lowerX, lowerY, upperX, lowerY, upperX, upperY, lowerX, upperY, lowerX, lowerY);
+	sprintf(s, "GROUP (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n", lowerX, lowerY, upperX, lowerY, upperX, upperY, lowerX, upperY, lowerX, lowerY);
 	bigScript += s;
 
 	//Cut from the lower left corner of group
-	sprintf(s, "CUT (%f %f);\n", xMin, yMin);
+	sprintf(s, "CUT (%.4f %.4f);\n", xMin, yMin);
 	bigScript += s;
 
 	//Create new board file
@@ -446,7 +445,7 @@ void panelizer()
 			yCoord = (row * designHeight) + (row * horizontalGap);
 
 			bigScript += "SET CONFIRM YES;\n";
-			sprintf(s, "PASTE (%f %f);\n", xCoord, yCoord);
+			sprintf(s, "PASTE (%.4f %.4f);\n", xCoord, yCoord);
 			bigScript += s;
 			bigScript += "SET CONFIRM OFF;\n";
 
@@ -454,13 +453,13 @@ void panelizer()
 			if (verticalGap > 0.05)
 			{
 				bigScript += "LAYER 20;\n"; //Dimension layer
-				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' R90 (%f %f);\n", xCoord - (verticalGap / 2), yCoord + (designHeight / 2));
+				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' R90 (%.4f %.4f);\n", xCoord - (verticalGap / 2), yCoord + (designHeight / 2));
 				bigScript += s;
 
 				if (column == numberOfColumns - 1) //Add last text
 				{
 					bigScript += "LAYER 20;\n"; //Dimension layer
-					sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' R90 (%f %f);\n", xCoord + (verticalGap / 2) + designWidth, yCoord + (designHeight / 2));
+					sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' R90 (%.4f %.4f);\n", xCoord + (verticalGap / 2) + designWidth, yCoord + (designHeight / 2));
 					bigScript += s;
 				}
 			}
@@ -468,13 +467,13 @@ void panelizer()
 			if (horizontalGap > 0.05)
 			{
 				bigScript += "LAYER 20;\n"; //Dimension layer
-				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' (%f %f);\n", xCoord + (designWidth / 2), yCoord - (horizontalGap / 2));
+				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' (%.4f %.4f);\n", xCoord + (designWidth / 2), yCoord - (horizontalGap / 2));
 				bigScript += s;
 
 				if (row == numberOfRows - 1) //Add last text
 				{
 					bigScript += "LAYER 20;\n"; //Dimension layer
-					sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' (%f %f);\n", xCoord + (designWidth / 2), yCoord + (horizontalGap / 2) + designHeight);
+					sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' (%.4f %.4f);\n", xCoord + (designWidth / 2), yCoord + (horizontalGap / 2) + designHeight);
 					bigScript += s;
 				}
 			}
@@ -509,11 +508,11 @@ void panelizer()
 				real yCoordHigh = (numberOfRows * designHeight) + (numberOfRows * horizontalGap) + 0.25;
 				yCoordHigh += borderWidth; //Extend past the frame if exists
 
-				sprintf(s, "WIRE 0.015 (%f %f) (%f %f);\n", xCoord, yCoordLow, xCoord, yCoordHigh);
+				sprintf(s, "WIRE 0.015 (%.4f %.4f) (%.4f %.4f);\n", xCoord, yCoordLow, xCoord, yCoordHigh);
 				bigScript += s;
 
 				//Add the word 'v-score' lines
-				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT v-score (%f %f);\n", xCoord, yCoordHigh + 0.09);
+				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT v-score (%.4f %.4f);\n", xCoord, yCoordHigh + 0.09);
 				bigScript += s;
 			}
 		}
@@ -539,11 +538,11 @@ void panelizer()
 				real xCoordHigh = (numberOfColumns * designWidth) + (numberOfColumns * verticalGap) + 0.25;
 				xCoordHigh += borderWidth; //Extend past the frame if exists
 
-				sprintf(s, "WIRE 0.015 (%f %f) (%f %f);\n", xCoordLow, yCoord, xCoordHigh, yCoord);
+				sprintf(s, "WIRE 0.015 (%.4f %.4f) (%.4f %.4f);\n", xCoordLow, yCoord, xCoordHigh, yCoord);
 				bigScript += s;
 
 				//Add the word 'v-score' lines
-				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15;  TEXT v-score (%f %f);\n", xCoordHigh + 0.3, yCoord);
+				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15;  TEXT v-score (%.4f %.4f);\n", xCoordHigh + 0.3, yCoord);
 				bigScript += s;
 			}
 		}
@@ -564,7 +563,7 @@ void panelizer()
 		real lowerYupper = 0 - horizontalGap;
 		real lowerYlower = lowerYupper - borderWidth;
 
-		sprintf(s, "WIRE 0.01 (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n",
+		sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
 				lowerXleft, lowerYupper,
 				lowerXright, lowerYupper,
 				lowerXright, lowerYlower,
@@ -578,7 +577,7 @@ void panelizer()
 		real rightYupper = panelHeight + horizontalGap - 0.02;
 		real rightYlower = 0 - horizontalGap + 0.02;
 
-		sprintf(s, "WIRE 0.01 (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n",
+		sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
 				rightXleft, rightYupper,
 				rightXright, rightYupper,
 				rightXright, rightYlower,
@@ -592,7 +591,7 @@ void panelizer()
 		real topYlower = panelHeight + horizontalGap;
 		real topYupper = topYlower + borderWidth;
 
-		sprintf(s, "WIRE 0.01 (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n",
+		sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
 				topXleft, topYupper,
 				topXright, topYupper,
 				topXright, topYlower,
@@ -606,7 +605,7 @@ void panelizer()
 		real leftYlower = 0 - horizontalGap + 0.02;
 		real leftYupper = panelHeight + horizontalGap - 0.02;
 
-		sprintf(s, "WIRE 0.01 (%f %f) (%f %f) (%f %f) (%f %f) (%f %f);\n",
+		sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
 				leftXleft, leftYupper,
 				leftXright, leftYupper,
 				leftXright, leftYlower,
@@ -621,32 +620,32 @@ void panelizer()
 		real fiducial_x_1 = 0 + borderWidth + verticalGap;
 		real fiducial_y_1 = panelHeight + horizontalGap + (borderWidth / 4);
 		bigScript += "LAYER 1;\n"; //Top layer
-		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%f %f);\n", fiducial_x_1, fiducial_y_1);
+		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%.4f %.4f);\n", fiducial_x_1, fiducial_y_1);
 		bigScript += s;
 		if (hasBottomParts() == 1)
 		{
-			sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS MR0 (%f %f);\n", fiducial_x_1, fiducial_y_1);
+			sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS MR0 (%.4f %.4f);\n", fiducial_x_1, fiducial_y_1);
 			bigScript += s;
 		}
 
 		real fiducial_x_2 = panelWidth - borderWidth - verticalGap;
 		real fiducial_y_2 = panelHeight + horizontalGap + (borderWidth / 4);
-		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%f %f);\n", fiducial_x_2, fiducial_y_2);
+		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%.4f %.4f);\n", fiducial_x_2, fiducial_y_2);
 		bigScript += s;
 		if (hasBottomParts() == 1)
 		{
-			sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS MR0 (%f %f);\n", fiducial_x_2, fiducial_y_2);
+			sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS MR0 (%.4f %.4f);\n", fiducial_x_2, fiducial_y_2);
 			bigScript += s;
 		}
 
 		//Lower one - larger fiducial
 		real fiducial_x_3 = 0 + borderWidth + verticalGap;
 		real fiducial_y_3 = 0 - horizontalGap - (borderWidth / 4);
-		sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED (%f %f);\n", fiducial_x_3, fiducial_y_3);
+		sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED (%.4f %.4f);\n", fiducial_x_3, fiducial_y_3);
 		bigScript += s;
 		if (hasBottomParts() == 1)
 		{
-			sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED MR0 (%f %f);\n", fiducial_x_3, fiducial_y_3);
+			sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED MR0 (%.4f %.4f);\n", fiducial_x_3, fiducial_y_3);
 			bigScript += s;
 		}
 
@@ -975,8 +974,8 @@ void orderingInstructionsWrite()
 		printf("finish, %s\n", "HASL lead free");
 		printf("stencils, %s\n", stencilsRequired);
 		printf("pcs per panel, %d\n", pcsPerPanel);
-		printf("min trace width, %fmm / %fin\n", minTraceWidth, convertMMToInches(minTraceWidth));
-		printf("min drill size, %fmm / %fin\n", minDrillSize, convertMMToInches(minDrillSize));
+		printf("min trace width, %.4fmm / %.4fin\n", minTraceWidth, convertMMToInches(minTraceWidth));
+		printf("min drill size, %.4fmm / %.4fin\n", minDrillSize, convertMMToInches(minDrillSize));
 		if (numberOfLayers > 2)
 		{
 			printf("filename to layer stackup 1/2/3/4: GTL, GL2, GL3, GBL\n");
@@ -1038,7 +1037,11 @@ void setGroupDefault()
 }
 
 //This is the main function
-if (board)
+if (schematic)
+{
+	exit("edit .brd; run " + argv[0] + " " + argv[1]);
+}
+else if (board)
 {
 	configRead(); //Read any settings if available
 
@@ -1249,7 +1252,16 @@ if (board)
 				bigScript += "RUN SparkFun-CAMmer.ulp;\n";
 			}
 
-			exit(bigScript); //Execute this generated script
+			//exit(bigScript); //Execute this generated script
+
+			//Output this script to a formal script file for faster execution and easier debugging
+			string scriptFile = filedir(argv[0]) + "SparkFun-Panelizer.scr";
+			output(scriptFile)
+				printf("%s", bigScript); //Write bigScript to the file
+			//Now run script
+			string s;
+			sprintf(s, "SCRIPT %s;\n", scriptFile);
+			exit(s);
 
 			dlgAccept(-1);
 		}
