@@ -109,7 +109,6 @@ Change Width 0.008;
 
 LBR:
 
-
 PAC:
 #Settings for footprints
 
@@ -153,7 +152,7 @@ Grid Default;
 
 SYM:
 
-Grid Default On;
+GRID OFF;
 Change Width 0.010;
 #Menu Arc Change Copy Cut Delete Display Export Grid Group Move Name Paste \
 #     Pin Quit Script Show Split Text Value Window ';' Wire Write Edit;
