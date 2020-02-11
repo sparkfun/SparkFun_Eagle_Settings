@@ -8,9 +8,7 @@
 	string bigScript = ""; //The big string of commands that we will eventually run as a script
 
 /*
-	The following command, run from a command prompt, will open eagle and run it against a board
-	
-	"C:\EAGLE 9.1.2\eagle.exe" -C "run C:\Users\OldLenny\Dropbox\Projects\SparkFun_Eagle_Settings\ulp\sparkfun-panelizer.ulp;" "C:\Users\OldLenny\Dropbox\Projects\Battery_Babysitter\Hardware\sparkfun-battery-babysitter.brd"
+	Run this ULP from the board you would like to panelize.
 */
 
 string configFile = filesetext(argv[0], ".cfg");
