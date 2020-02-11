@@ -4,7 +4,7 @@
         "name": "Nathan Seidle"
     },
     "description": {
-        "EN": "SparkFun 4 layer CAM job. Compatible with EAGLE v8+ new CAM processor. Use with the SparkFun-CAMMER.ulp to automatically process, zip, and preview gerber output in one button click!"
+        "EN": "SparkFun 2 layer CAM job. Compatible with EAGLE v8+ new CAM processor. Use with the SparkFun-CAMMER.ulp to automatically process, zip, and preview gerber output in one button click!"
     },
     "output_type": "directory",
     "outputs": [
@@ -54,56 +54,6 @@
                     "config": {
                         "file_function": "Copper",
                         "layer": 2,
-                        "layer_details": "mixed",
-                        "layer_type": "Inner"
-                    },
-                    "filename_format": "%N.GL2",
-                    "layers": [
-                        17,
-                        18,
-                        2
-                    ],
-                    "name": "Inner Layer 2",
-                    "polarity": "positive",
-                    "type": "gerber_layer"
-                },
-                {
-                    "advanced_options": {
-                        "mirror": false,
-                        "offset_x": 0,
-                        "offset_y": 0,
-                        "rotate": false,
-                        "upside_down": false
-                    },
-                    "board_outline": false,
-                    "config": {
-                        "file_function": "Copper",
-                        "layer": 3,
-                        "layer_details": "mixed",
-                        "layer_type": "Inner"
-                    },
-                    "filename_format": "%N.GL3",
-                    "layers": [
-                        17,
-                        18,
-                        15
-                    ],
-                    "name": "Inner Layer 15",
-                    "polarity": "positive",
-                    "type": "gerber_layer"
-                },
-                {
-                    "advanced_options": {
-                        "mirror": false,
-                        "offset_x": 0,
-                        "offset_y": 0,
-                        "rotate": false,
-                        "upside_down": false
-                    },
-                    "board_outline": false,
-                    "config": {
-                        "file_function": "Copper",
-                        "layer": 4,
                         "layer_details": "mixed",
                         "layer_type": "bottom"
                     },
@@ -311,7 +261,7 @@
             ]
         }
     ],
-    "timestamp": "2020-02-11T15:27:02",
+    "timestamp": "2020-02-11T15:05:12",
     "type": "EAGLE CAM job",
     "units": "metric",
     "version": "9.2.0"
