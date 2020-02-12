@@ -12,6 +12,8 @@
 */
 
 string configFile = filesetext(argv[0], ".cfg");
+string designRulesLocation; //Used to store the temp location of the DRU file for the original design
+string s = "";
 
 //Config options we want to save
 real verticalGap = 0.02; //PCBWay needs at least 0.02 inches between copies
@@ -365,11 +367,25 @@ void getOutlyingOrigins()
 		yOutlyingMin = yMin;
 }
 
+//We need to preserve the DRC settings from the original design into the panel
+//To do that, we save the DRC file of the original into the production folder
+//then load it once the panel is created
+//then remove it
+void saveDRCfile()
+{
+	sprintf(s, "DRC SAVE %s;", designRulesLocation);
+	bigScript += s;
+}
+
+void loadDRCfile()
+{
+	sprintf(s, "DRC LOAD %s;", designRulesLocation);
+	bigScript += s;
+}
+
 //Assumes all variables have been set to inch units
 void panelizer()
 {
-	string s = "";
-
 	real borderWidth = 0;
 	if (drawPanelBorders == 1)
 		borderWidth = 0.25;
@@ -397,6 +413,8 @@ void panelizer()
 	panelHeight += borderWidth * 2;
 	if (drawPanelBorders == 1)
 		panelHeight += (horizontalGap * 2);
+
+	saveDRCfile(); //Save the DRC file for this board to a temp location so we can load it in the panel
 
 	//Tun on all layers for copying
 	bigScript += "DISPLAY ALL;\n"; //Copy everything
@@ -650,15 +668,19 @@ void panelizer()
 		bigScript += "LAYER 1;\n"; //Top layer
 	}
 
+	//Load the rules from the original design
+	loadDRCfile();
+
+	//Old way of loading DRC rules
 	//Load the appropriate DRC
-	if (hasFourLayers() == 0)
-	{
-		bigScript += "DRC LOAD SparkFun-2-layer-PCBWay-LIMIT.dru;\n";
-	}
-	else
-	{
-		bigScript += "DRC LOAD SparkFun-4-layer-TIGHT.dru;\n";
-	}
+	// if (hasFourLayers() == 0)
+	// {
+	// 	bigScript += "DRC LOAD SparkFun-2-layer-PCBWay-LIMIT.dru;\n";
+	// }
+	// else
+	// {
+	// 	bigScript += "DRC LOAD SparkFun-4-layer-TIGHT.dru;\n";
+	// }
 
 	//Update the polygon pours - This can take a long time
 	//bigScript += "RATSNEST;\n";
@@ -872,6 +894,9 @@ void createFile()
 	{
 		dlgMessageBox("Error: Command failed.", "OK");
 	}
+
+	//Create link to the production folder to save the design rules
+	designRulesLocation = projectDirectory + "Production/" + baseFileName + ".dru";
 }
 
 //Calculate the smallest trace width, returns value in mm
