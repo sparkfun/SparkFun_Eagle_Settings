@@ -22,6 +22,7 @@ real panelSizeX = 3.0;
 real panelSizeY = 2.0;
 int vScoreIndicators = 0;
 int drawPanelBorders = 0;
+int exposeCardEdge = 0;
 int runCAM = 0;
 int generateTopStencil = 0;
 int generateBottomStencil = 0;
@@ -43,6 +44,7 @@ void configWrite()
 		printf("%d\n", generateBottomStencil);
 		printf("%d\n", panelUnits);
 		printf("%d\n", panelMustBeLargerThanDimension);
+		printf("%d\n", exposeCardEdge);
 	}
 }
 
@@ -65,6 +67,7 @@ void configRead()
 			generateBottomStencil = strtol(data[8]);
 			panelUnits = strtol(data[9]);
 			panelMustBeLargerThanDimension = strtol(data[10]);
+			exposeCardEdge = strtol(data[11]);
 		}
 	}
 }
@@ -541,9 +544,13 @@ void panelizer()
 			int linesToDraw = numberOfRows;
 			if (drawPanelBorders == 1)
 			{
-				row = 0;
-				linesToDraw++;
+				if (exposeCardEdge == 0)
+				{
+					row = 0;
+					linesToDraw++;
+				}
 			}
+
 			for (; row < linesToDraw; row++)
 			{
 				yCoord = ((designHeight + (horizontalGap / 2)) * row) + ((row - 1) * (horizontalGap / 2));
@@ -579,13 +586,17 @@ void panelizer()
 		real lowerYupper = 0 - horizontalGap;
 		real lowerYlower = lowerYupper - borderWidth;
 
-		sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
-				lowerXleft, lowerYupper,
-				lowerXright, lowerYupper,
-				lowerXright, lowerYlower,
-				lowerXleft, lowerYlower,
-				lowerXleft, lowerYupper);
-		bigScript += s;
+		if (exposeCardEdge == 0)
+		{
+			//Don't expose the card edge. Draw the lower border
+			sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
+					lowerXleft, lowerYupper,
+					lowerXright, lowerYupper,
+					lowerXright, lowerYlower,
+					lowerXleft, lowerYlower,
+					lowerXleft, lowerYupper);
+			bigScript += s;
+		}
 
 		//Draw right box
 		real rightXleft = panelWidth + verticalGap;
@@ -657,6 +668,14 @@ void panelizer()
 		//Lower one - larger fiducial
 		real fiducial_x_3 = 0 + borderWidth + verticalGap;
 		real fiducial_y_3 = 0 - horizontalGap - (borderWidth / 4);
+
+		if (exposeCardEdge == 1)
+		{
+			//Expose the card edge. Move the lower fiducial to the left border
+			fiducial_x_3 = 0 - (borderWidth / 2) - verticalGap;
+			fiducial_y_3 = 0 + horizontalGap + (borderWidth / 4);
+		}
+
 		sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED (%.4f %.4f);\n", fiducial_x_3, fiducial_y_3);
 		bigScript += s;
 		if (hasBottomParts() == 1)
@@ -1208,6 +1227,7 @@ else if (board)
 		dlgGroup("Extra Production Bits")
 		{
 			dlgHBoxLayout { dlgCheckBox("Add Panel Borders and Fiducials", drawPanelBorders); }
+			dlgHBoxLayout { dlgCheckBox("Expose Bottom/Card Edge", exposeCardEdge); }
 			dlgHBoxLayout { dlgCheckBox("Add V-score Lines and Text", vScoreIndicators); }
 		}
 
