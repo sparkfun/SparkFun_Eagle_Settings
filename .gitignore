@@ -22,6 +22,12 @@
 ## Configure files from ULPs
 *.cfg
 
+## Script files generated from ULPs in ULP directory
+ulp/*.scr
+
+## VScode files
+.vscode/*
+
 #################
 ## Eclipse
 #################
