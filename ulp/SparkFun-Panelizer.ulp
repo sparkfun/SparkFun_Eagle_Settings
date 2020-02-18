@@ -10,6 +10,9 @@
 /*
 	Run this ULP from the board you would like to panelize.
 */
+// sprintf(s, "Width: %f", panelWidth);
+// dlgMessageBox(s);
+// exit(-1);
 
 string configFile = filesetext(argv[0], ".cfg");
 string designRulesLocation; //Used to store the temp location of the DRU file for the original design
@@ -413,9 +416,35 @@ void panelizer()
 		panelWidth += (verticalGap * 2);
 
 	panelHeight = (designHeight + horizontalGap) * numberOfRows - horizontalGap;
-	panelHeight += borderWidth * 2;
+	panelHeight += borderWidth;
 	if (drawPanelBorders == 1)
-		panelHeight += (horizontalGap * 2);
+		panelHeight += (horizontalGap);
+
+	//Check to see if panel is big enough for v-scoring
+	//Min size is 7cm x 7cm if v-scoring is required
+	if (vScoreIndicators == 1)
+	{
+		if (panelWidth < 2.75 || panelHeight < 2.75)
+		{
+			dlgMessageBox("Fab houses require a panel to be larger than 2.75\" on side to fit into their v-scoring machine. Please increase the size of your panel.");
+			exit(-1);
+		}
+	}
+
+	//If we need a chamfered edge then we have to expose the panel edge.
+	//If we need to expose the panel edge then we can't have more than two rows
+	if (exposeCardEdge == 1)
+	{
+		if (numberOfRows > 2)
+			numberOfRows = 2;
+
+		//Adjust the panelHeight to 70mm. We need only two rows, no top/bottom borders
+		panelHeight = 2.75;
+
+		//If 2 * design height is > 70mm then we need to insert a quarter inch 'dead' area
+		if (designHeight * 2 > 2.75)
+			panelHeight = designHeight * 2 + 0.25;
+	}
 
 	saveDRCfile(); //Save the DRC file for this board to a temp location so we can load it in the panel
 
@@ -464,7 +493,34 @@ void panelizer()
 			yCoord = (row * designHeight) + (row * horizontalGap);
 
 			bigScript += "SET CONFIRM YES;\n";
-			sprintf(s, "PASTE (%.4f %.4f);\n", xCoord, yCoord);
+
+			if (exposeCardEdge == 0)
+			{
+				//If card edge is not required, just paste the design
+				sprintf(s, "PASTE (%.4f %.4f);\n", xCoord, yCoord);
+			}
+			else
+			{
+				//If we do need card edge exposed, rotate the design on the upper row
+				if (row == 0)
+				{
+					//Normal paste
+					sprintf(s, "PASTE (%.4f %.4f);\n", xCoord, yCoord);
+				}
+				else
+				{
+					xCoord = (column * designWidth + designWidth) + (column * verticalGap);
+
+					//Move yCoord far up so that this design butts against the upper edge
+					//For designs that are smaller than 7cm on a side, this will open space
+					//in the middle of the board
+					yCoord = panelHeight;
+
+					//Paste with rotation
+					sprintf(s, "PASTE R180 (%.4f %.4f);\n", xCoord, yCoord);
+				}
+			}
+
 			bigScript += s;
 			bigScript += "SET CONFIRM OFF;\n";
 
@@ -517,6 +573,7 @@ void panelizer()
 				column = 0;
 				linesToDraw++;
 			}
+
 			for (; column < linesToDraw; column++)
 			{
 				xCoord = ((designWidth + (verticalGap / 2)) * column) + ((column - 1) * (verticalGap / 2));
@@ -524,8 +581,7 @@ void panelizer()
 				real yCoordLow = 0;
 				yCoordLow -= (borderWidth + horizontalGap);
 
-				real yCoordHigh = (numberOfRows * designHeight) + (numberOfRows * horizontalGap) + 0.25;
-				yCoordHigh += borderWidth; //Extend past the frame if exists
+				real yCoordHigh = panelHeight + 0.25;
 
 				sprintf(s, "WIRE 0.015 (%.4f %.4f) (%.4f %.4f);\n", xCoord, yCoordLow, xCoord, yCoordHigh);
 				bigScript += s;
@@ -542,18 +598,24 @@ void panelizer()
 			//Add horizontal lines
 			int row = 1;
 			int linesToDraw = numberOfRows;
+
 			if (drawPanelBorders == 1)
 			{
+				linesToDraw++;
 				if (exposeCardEdge == 0)
 				{
 					row = 0;
-					linesToDraw++;
 				}
 			}
 
 			for (; row < linesToDraw; row++)
 			{
 				yCoord = ((designHeight + (horizontalGap / 2)) * row) + ((row - 1) * (horizontalGap / 2));
+
+				if (exposeCardEdge == 1 && row == 2)
+				{
+					yCoord = panelHeight - designHeight - (horizontalGap / 2);
+				}
 
 				real xCoordLow = 0;
 				xCoordLow -= (borderWidth + verticalGap);
@@ -571,18 +633,14 @@ void panelizer()
 		}
 	}
 
+	//Add borders to four sides
 	if (drawPanelBorders == 1)
 	{
-		//Add borders to four sides
-
 		bigScript += "LAYER 20;\n"; //Dimension layer
-
-		real panelWidth = (designWidth * numberOfColumns) + (verticalGap * (numberOfColumns - 1));
-		real panelHeight = (designHeight * numberOfRows) + (horizontalGap * (numberOfRows - 1));
 
 		//Draw lower box
 		real lowerXleft = 0 - verticalGap - borderWidth;
-		real lowerXright = panelWidth + borderWidth + verticalGap;
+		real lowerXright = panelWidth - borderWidth - verticalGap;
 		real lowerYupper = 0 - horizontalGap;
 		real lowerYlower = lowerYupper - borderWidth;
 
@@ -599,9 +657,12 @@ void panelizer()
 		}
 
 		//Draw right box
-		real rightXleft = panelWidth + verticalGap;
+		real rightXleft = panelWidth - verticalGap - (borderWidth * 2); //panelWidth includes borders as needed, but X starts at 0-borderWidth
 		real rightXright = rightXleft + borderWidth;
-		real rightYupper = panelHeight + horizontalGap - 0.02;
+		real rightYupper = panelHeight - borderWidth - 0.02;
+		if (exposeCardEdge == 1)
+			rightYupper = panelHeight;
+
 		real rightYlower = 0 - horizontalGap + 0.02;
 
 		sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
@@ -614,23 +675,29 @@ void panelizer()
 
 		//Draw top box
 		real topXleft = 0 - verticalGap - borderWidth;
-		real topXright = panelWidth + borderWidth + verticalGap;
-		real topYlower = panelHeight + horizontalGap;
-		real topYupper = topYlower + borderWidth;
+		real topXright = panelWidth - borderWidth - verticalGap;
+		real topYlower = panelHeight - borderWidth;
+		real topYupper = panelHeight;
 
-		sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
-				topXleft, topYupper,
-				topXright, topYupper,
-				topXright, topYlower,
-				topXleft, topYlower,
-				topXleft, topYupper);
-		bigScript += s;
+		if (exposeCardEdge == 0)
+		{
+			//Don't expose the card edge. Draw the upper border
+			sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
+					topXleft, topYupper,
+					topXright, topYupper,
+					topXright, topYlower,
+					topXleft, topYlower,
+					topXleft, topYupper);
+			bigScript += s;
+		}
 
 		//Draw left box
 		real leftXleft = 0 - borderWidth - verticalGap;
 		real leftXright = 0 - verticalGap;
 		real leftYlower = 0 - horizontalGap + 0.02;
-		real leftYupper = panelHeight + horizontalGap - 0.02;
+		real leftYupper = panelHeight - borderWidth - 0.02;
+		if (exposeCardEdge == 1)
+			leftYupper = panelHeight;
 
 		sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
 				leftXleft, leftYupper,
@@ -645,25 +712,31 @@ void panelizer()
 		//Upper two fiducials live on one breakaway edge
 		//Fiducials are not in center of border, they are nearer the panel so the clips don't obstruct their view
 		real fiducial_x_1 = 0 + borderWidth + verticalGap;
-		real fiducial_y_1 = panelHeight + horizontalGap + (borderWidth / 4);
+		real fiducial_y_1 = panelHeight - borderWidth + (borderWidth / 4);
+		if (exposeCardEdge == 1)
+		{
+			//Expose the card edge. Move the top left fiducial to the left border
+			fiducial_x_1 = 0 - (borderWidth / 3) - verticalGap;
+			fiducial_y_1 = panelHeight - borderWidth;
+		}
 		bigScript += "LAYER 1;\n"; //Top layer
 		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%.4f %.4f);\n", fiducial_x_1, fiducial_y_1);
 		bigScript += s;
-		if (hasBottomParts() == 1)
-		{
-			sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS MR0 (%.4f %.4f);\n", fiducial_x_1, fiducial_y_1);
-			bigScript += s;
-		}
+		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS MR0 (%.4f %.4f);\n", fiducial_x_1, fiducial_y_1);
+		bigScript += s;
 
-		real fiducial_x_2 = panelWidth - borderWidth - verticalGap;
-		real fiducial_y_2 = panelHeight + horizontalGap + (borderWidth / 4);
+		real fiducial_x_2 = panelWidth - (borderWidth * 3) - (borderWidth / 4);
+		real fiducial_y_2 = panelHeight - borderWidth + (borderWidth / 4);
+		if (exposeCardEdge == 1)
+		{
+			//Expose the card edge. Move the top right fiducial to the right border
+			fiducial_x_2 = panelWidth - (borderWidth * 2) - verticalGap + (borderWidth / 3);
+			fiducial_y_2 = panelHeight - borderWidth;
+		}
 		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%.4f %.4f);\n", fiducial_x_2, fiducial_y_2);
 		bigScript += s;
-		if (hasBottomParts() == 1)
-		{
-			sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS MR0 (%.4f %.4f);\n", fiducial_x_2, fiducial_y_2);
-			bigScript += s;
-		}
+		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS MR0 (%.4f %.4f);\n", fiducial_x_2, fiducial_y_2);
+		bigScript += s;
 
 		//Lower one - larger fiducial
 		real fiducial_x_3 = 0 + borderWidth + verticalGap;
@@ -672,8 +745,8 @@ void panelizer()
 		if (exposeCardEdge == 1)
 		{
 			//Expose the card edge. Move the lower fiducial to the left border
-			fiducial_x_3 = 0 - (borderWidth / 2) - verticalGap;
-			fiducial_y_3 = 0 + horizontalGap + (borderWidth / 4);
+			fiducial_x_3 = 0 - (borderWidth / 3) - verticalGap;
+			fiducial_y_3 = 0 + horizontalGap + borderWidth;
 		}
 
 		sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED (%.4f %.4f);\n", fiducial_x_3, fiducial_y_3);
