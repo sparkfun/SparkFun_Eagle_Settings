@@ -235,7 +235,8 @@ void createGerbers()
 	}
 
 	//The new version of Eagle (v8/9) has a faster CAM processor. We call it with the CAM file and we get gerbers out.
-	commandToRun += " & echo Running New CAM Processor on entire design";
+    sprintf(s, " & echo Running New CAM Processor on %s", baseFileName);
+    commandToRun += s;
 
 	//1,217 seconds to complete CAM using old method
 	//42 seconds to CAM the BlackBoard panel (8.8 x 7.2" with massive amounts of intense silkscreen artifacts)
