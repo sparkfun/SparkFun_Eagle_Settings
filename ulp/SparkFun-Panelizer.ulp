@@ -359,7 +359,7 @@ void getOutlyingOrigins()
 					yOutlyingMin = u2inch(E.y);
 
 			} //End ignore list
-		}	 //End Elements
+		}	  //End Elements
 	}
 
 	//Increase outliers to at least the x/y Min/Max values
@@ -587,8 +587,22 @@ void panelizer()
 				bigScript += s;
 
 				//Add the word 'v-score' lines
-				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT v-score (%.4f %.4f);\n", xCoord, yCoordHigh + 0.09);
+				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT v-score (%.4f %.4f);\n",
+						xCoord,
+						yCoordHigh + 0.09);
 				bigScript += s;
+
+				if (exposeCardEdge == 1)
+				{
+					if (column < linesToDraw - 1)
+					{
+						//Add the word 'Do not remove' to the inner panel
+						sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15;  TEXT 'Do not remove' (%.4f %.4f);\n",
+								xCoord + (designWidth / 2),
+								panelHeight / 2);
+						bigScript += s;
+					}
+				}
 			}
 		}
 
@@ -891,7 +905,7 @@ void calculateDesignDimensions()
 					if (wy2 < overhang_yMin)
 						overhang_yMin = wy2;
 				} //End E.package.wires
-			}	 //End ignore list
+			}	  //End ignore list
 		}		  //End Elements
 	}
 
