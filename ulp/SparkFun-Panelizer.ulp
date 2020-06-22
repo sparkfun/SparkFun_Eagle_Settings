@@ -379,13 +379,13 @@ void getOutlyingOrigins()
 //then remove it
 void saveDRCfile()
 {
-	sprintf(s, "DRC SAVE %s;", designRulesLocation);
+	sprintf(s, "DRC SAVE '%s';\n", designRulesLocation);
 	bigScript += s;
 }
 
 void loadDRCfile()
 {
-	sprintf(s, "DRC LOAD %s;", designRulesLocation);
+	sprintf(s, "DRC LOAD '%s';\n", designRulesLocation);
 	bigScript += s;
 }
 
@@ -1002,7 +1002,7 @@ void createFile()
 	}
 
 	//Create link to the production folder to save the design rules
-	designRulesLocation = projectDirectory + "Production/" + baseFileName + ".dru";
+	designRulesLocation = get_project_path() + "Production/" + baseFileName + ".dru";
 }
 
 //Calculate the smallest trace width, returns value in mm
