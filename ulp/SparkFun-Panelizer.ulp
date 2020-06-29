@@ -31,6 +31,7 @@ int generateTopStencil = 0;
 int generateBottomStencil = 0;
 int panelUnits = 0;						//Default to inches
 int panelMustBeLargerThanDimension = 0; //Default to 'must be less than'
+int leftRightFiducials = 0; // Move panel fiducials to the left and right sides (instead of top and bottom)
 
 void configWrite()
 {
@@ -48,6 +49,7 @@ void configWrite()
 		printf("%d\n", panelUnits);
 		printf("%d\n", panelMustBeLargerThanDimension);
 		printf("%d\n", exposeCardEdge);
+		printf("%d\n", leftRightFiducials);
 	}
 }
 
@@ -71,6 +73,7 @@ void configRead()
 			panelUnits = strtol(data[9]);
 			panelMustBeLargerThanDimension = strtol(data[10]);
 			exposeCardEdge = strtol(data[11]);
+			leftRightFiducials = strtol(data[12]);
 		}
 	}
 }
@@ -733,6 +736,12 @@ void panelizer()
 			fiducial_x_1 = 0 - (borderWidth / 3) - verticalGap;
 			fiducial_y_1 = panelHeight - borderWidth;
 		}
+		else if (leftRightFiducials == 1)
+		{
+			//Move the top left fiducial to the left border
+			fiducial_x_1 = 0 - (borderWidth / 3) - verticalGap;
+			fiducial_y_1 = panelHeight - borderWidth - (borderWidth / 4);
+		}
 		bigScript += "LAYER 1;\n"; //Top layer
 		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%.4f %.4f);\n", fiducial_x_1, fiducial_y_1);
 		bigScript += s;
@@ -747,6 +756,12 @@ void panelizer()
 			fiducial_x_2 = panelWidth - (borderWidth * 2) - verticalGap + (borderWidth / 3);
 			fiducial_y_2 = panelHeight - borderWidth;
 		}
+		else if (leftRightFiducials == 1)
+		{
+			//Expose the card edge. Move the top right fiducial to the right border
+			fiducial_x_2 = panelWidth - (borderWidth * 2) - verticalGap + (borderWidth / 3);
+			fiducial_y_2 = panelHeight - borderWidth - (borderWidth / 4);
+		}
 		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%.4f %.4f);\n", fiducial_x_2, fiducial_y_2);
 		bigScript += s;
 		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS MR0 (%.4f %.4f);\n", fiducial_x_2, fiducial_y_2);
@@ -756,7 +771,7 @@ void panelizer()
 		real fiducial_x_3 = 0 + borderWidth + verticalGap;
 		real fiducial_y_3 = 0 - horizontalGap - (borderWidth / 4);
 
-		if (exposeCardEdge == 1)
+		if ((exposeCardEdge == 1) || (leftRightFiducials == 1))
 		{
 			//Expose the card edge. Move the lower fiducial to the left border
 			fiducial_x_3 = 0 - (borderWidth / 3) - verticalGap;
@@ -1151,15 +1166,15 @@ void setGroupDefault()
 	board(B) {
 		usersGroupCommandSetting = B.groupdefault;
 	}
-	
+
 	//run C:\Users\OldLenny\Dropbox\Projects\SparkFun_Eagle_Settings\ulp\sparkfun-panelizer.ulp
 	string s;
 	sprintf(s, "Setting: %d", userGroupCommandSetting);
 	dlgMessageBox(s);
 	exit(0);
-	
+
 	bigScript += "SET GROUP_DEFAULT OFF;\n"; //Not documented but works
-	
+
 
 
 	*/
@@ -1316,6 +1331,7 @@ else if (board)
 			dlgHBoxLayout { dlgCheckBox("Add Panel Borders and Fiducials", drawPanelBorders); }
 			dlgHBoxLayout { dlgCheckBox("Expose Bottom/Card Edge", exposeCardEdge); }
 			dlgHBoxLayout { dlgCheckBox("Add V-score Lines and Text", vScoreIndicators); }
+			dlgHBoxLayout { dlgCheckBox("Move Panel Fiducials to Left+Right Edges", leftRightFiducials); }
 		}
 
 		dlgGroup("Stencil Generation")
