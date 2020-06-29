@@ -332,6 +332,40 @@ string getBoardColor()
 	return ("Unknown");
 }
 
+//Search for the surface finish
+//Currently only searches for ENIG or HASL. Defaults to "HASL lead free"
+string getSurfaceFinish()
+{
+	//Search the ordering instructions box
+	board(B)
+	{
+		B.texts(T)
+		{
+			if (containsString(T.value, "ENIG") == 1)
+			{
+					return ("ENIG");
+			}
+			if (containsString(T.value, "enig") == 1)
+			{
+					return ("ENIG");
+			}
+			if (containsString(T.value, "HASL") == 1)
+			{
+					return ("HASL lead free");
+			}
+			if (containsString(T.value, "hasl") == 1)
+			{
+					return ("HASL lead free");
+			}
+		}
+	}
+
+	string warning = "Not sure what board finish to use. Defaulting to HASL lead free.";
+
+	dlgMessageBox(warning);
+	return ("HASL lead free");
+}
+
 //Look at the origins for all the elements. Find the largest outlying coordinate.
 //These values are used to appropriately set the oversize amount of the copy frame
 void getOutlyingOrigins()
@@ -1094,6 +1128,7 @@ void orderingInstructionsWrite()
 
 	string boardThickness = getBoardThickness(); //Search for 0.8mm text on board
 	string boardColor = getBoardColor();		 //Search board for aesthetics to determine soldermask color
+	string surfaceFinish = getSurfaceFinish();	// Search board for surface finish
 
 	int pcsPerPanel = numberOfColumns * numberOfRows; //Total count per panel. Helps when figuring out the number of panels to order
 
@@ -1115,7 +1150,7 @@ void orderingInstructionsWrite()
 		printf("soldermask color, %s\n", boardColor);
 		printf("silkscreen color, %s\n", boardSilkColor);
 		printf("oz copper, %s\n", "1oz");
-		printf("finish, %s\n", "HASL lead free");
+		printf("finish, %s\n", surfaceFinish);
 		printf("stencils, %s\n", stencilsRequired);
 		printf("pcs per panel, %d\n", pcsPerPanel);
 		printf("min trace width, %.4fmm / %.4fin\n", minTraceWidth, convertMMToInches(minTraceWidth));
