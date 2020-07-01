@@ -14,7 +14,6 @@
 // dlgMessageBox(s);
 // exit(-1);
 
-string configFile = filesetext(argv[0], ".cfg");
 string designRulesLocation; //Used to store the temp location of the DRU file for the original design
 string s = "";
 
@@ -33,8 +32,29 @@ int panelUnits = 0;						//Default to inches
 int panelMustBeLargerThanDimension = 0; //Default to 'must be less than'
 int leftRightFiducials = 0; // Move panel fiducials to the left and right sides (instead of top and bottom)
 
+//Get the name of this brd (no extension, no directory)
+string get_project_name()
+{
+	if (board)
+		board(B) return (filesetext(filename(B.name), ""));
+	if (schematic)
+		schematic(B) return (filesetext(filename(B.name), ""));
+}
+
+string get_project_path()
+{
+	if (board)
+		board(B) return (filedir(B.name));
+	if (schematic)
+		schematic(B) return (filedir(B.name));
+}
+
 void configWrite()
 {
+	//Get the name of this brd (no extension, no directory)
+	string baseFileName = get_project_name();
+	string configFile = get_project_path() + "Production/" + baseFileName + "-PanelizerSettings.txt";
+
 	output(configFile)
 	{
 		printf("%.5f\n", verticalGap);
@@ -55,6 +75,10 @@ void configWrite()
 
 void configRead()
 {
+	//Get the name of this brd (no extension, no directory)
+	string baseFileName = get_project_name();
+	string configFile = get_project_path() + "Production/" + baseFileName + "-PanelizerSettings.txt";
+
 	if (filesize(configFile))
 	{ //Check if file exists
 		string data[];
@@ -441,6 +465,12 @@ void panelizer()
 	{
 		numberOfColumns--;
 		numberOfRows--;
+	}
+
+	if(numberOfRows <= 0 || numberOfColumns <= 0)
+	{
+		dlgMessageBox("The number of columns or rows was 0. Please increase X/Y panel size for this design.");
+		exit(-1);
 	}
 
 	//numberOfRows = ceil(panelSizeY / (designHeight + horizontalGap));
@@ -983,14 +1013,6 @@ void calculateDesignDimensions()
 	}
 }
 
-string get_project_path()
-{
-	if (board)
-		board(B) return (filedir(B.name));
-	if (schematic)
-		schematic(B) return (filedir(B.name));
-}
-
 //Change any / in a string to \
 //Useful for directory structure before calling a cmd
 string convertForwardToBackSlashes(string thing)
@@ -1010,11 +1032,7 @@ string convertForwardToBackSlashes(string thing)
 void createFile()
 {
 	//Get the name of this brd (no extension, no directory)
-	string baseFileName = "";
-	board(B)
-	{
-		baseFileName = filesetext(filename(B.name), "");
-	}
+	string baseFileName = get_project_name();
 
 	//See if this panel already exists. If yes, ask user to overwrite
 	string a[];
@@ -1042,6 +1060,17 @@ void createFile()
 		dlgMessageBox("Error: Command failed.", "OK");
 	}
 
+	//Create link to the production folder to save the design rules
+	designRulesLocation = get_project_path() + "Production/" + baseFileName + ".dru";
+}
+
+void removeOldFiles()
+{
+	//Get the name of this brd (no extension, no directory)
+	string baseFileName = get_project_name();
+	string projectDirectory = get_project_path();
+	string commandToRun;
+	
 	//Remove any files in the production folder left over from previous panel CAM
 	sprintf(commandToRun, "cmd.exe /C del \"%sProduction\\%s-Panel.*\"", projectDirectory, baseFileName);
 	if (system(commandToRun) != 0)
@@ -1049,8 +1078,11 @@ void createFile()
 		dlgMessageBox("Error: Command failed.", "OK");
 	}
 
-	//Create link to the production folder to save the design rules
-	designRulesLocation = get_project_path() + "Production/" + baseFileName + ".dru";
+	sprintf(commandToRun, "cmd.exe /C del \"%sProduction\\ordering_instructions.TXT\"", projectDirectory);
+	if (system(commandToRun) != 0)
+	{
+		dlgMessageBox("Error: Command failed.", "OK");
+	}	
 }
 
 //Calculate the smallest trace width, returns value in mm
@@ -1422,6 +1454,8 @@ else if (board)
 					exit(-1);
 				}
 			}
+
+			removeOldFiles(); //Remove old gerbers, zip, ordering instructions, and brd if exists
 
 			panelizer(); //Create the panel
 
