@@ -360,9 +360,8 @@ string getSurfaceFinish()
 		}
 	}
 
-	string warning = "Not sure what board finish to use. Defaulting to HASL lead free.";
-
-	dlgMessageBox(warning);
+	//string warning = "Not sure what board finish to use. Defaulting to HASL lead free.";
+	//dlgMessageBox(warning);
 	return ("HASL lead free");
 }
 
