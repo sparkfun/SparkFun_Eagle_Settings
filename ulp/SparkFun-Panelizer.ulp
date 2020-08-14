@@ -30,7 +30,7 @@ int generateTopStencil = 0;
 int generateBottomStencil = 0;
 int panelUnits = 0;						//Default to inches
 int panelMustBeLargerThanDimension = 0; //Default to 'must be less than'
-int leftRightFiducials = 0; // Move panel fiducials to the left and right sides (instead of top and bottom)
+int leftRightFiducials = 0;				// Move panel fiducials to the left and right sides (instead of top and bottom)
 
 //Get the name of this brd (no extension, no directory)
 string get_project_name()
@@ -367,19 +367,19 @@ string getSurfaceFinish()
 		{
 			if (containsString(T.value, "ENIG") == 1)
 			{
-					return ("ENIG");
+				return ("ENIG");
 			}
 			if (containsString(T.value, "enig") == 1)
 			{
-					return ("ENIG");
+				return ("ENIG");
 			}
 			if (containsString(T.value, "HASL") == 1)
 			{
-					return ("HASL lead free");
+				return ("HASL lead free");
 			}
 			if (containsString(T.value, "hasl") == 1)
 			{
-					return ("HASL lead free");
+				return ("HASL lead free");
 			}
 		}
 	}
@@ -467,7 +467,7 @@ void panelizer()
 		numberOfRows--;
 	}
 
-	if(numberOfRows <= 0 || numberOfColumns <= 0)
+	if (numberOfRows <= 0 || numberOfColumns <= 0)
 	{
 		dlgMessageBox("The number of columns or rows was 0. Please increase X/Y panel size for this design.");
 		exit(-1);
@@ -1070,7 +1070,7 @@ void removeOldFiles()
 	string baseFileName = get_project_name();
 	string projectDirectory = get_project_path();
 	string commandToRun;
-	
+
 	//Remove any files in the production folder left over from previous panel CAM
 	sprintf(commandToRun, "cmd.exe /C del \"%sProduction\\%s-Panel.*\"", projectDirectory, baseFileName);
 	if (system(commandToRun) != 0)
@@ -1082,7 +1082,7 @@ void removeOldFiles()
 	if (system(commandToRun) != 0)
 	{
 		dlgMessageBox("Error: Command failed.", "OK");
-	}	
+	}
 }
 
 //Calculate the smallest trace width, returns value in mm
@@ -1159,7 +1159,7 @@ void orderingInstructionsWrite()
 
 	string boardThickness = getBoardThickness(); //Search for 0.8mm text on board
 	string boardColor = getBoardColor();		 //Search board for aesthetics to determine soldermask color
-	string surfaceFinish = getSurfaceFinish();	// Search board for surface finish
+	string surfaceFinish = getSurfaceFinish();	 // Search board for surface finish
 
 	int pcsPerPanel = numberOfColumns * numberOfRows; //Total count per panel. Helps when figuring out the number of panels to order
 
