@@ -843,11 +843,8 @@ void panelizer()
 
 		sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED (%.4f %.4f);\n", fiducial_x_3, fiducial_y_3);
 		bigScript += s;
-		if (hasBottomParts() == 1)
-		{
-			sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED MR0 (%.4f %.4f);\n", fiducial_x_3, fiducial_y_3);
-			bigScript += s;
-		}
+		sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED MR0 (%.4f %.4f);\n", fiducial_x_3, fiducial_y_3);
+		bigScript += s;
 
 		bigScript += "LAYER 1;\n"; //Top layer
 	}
