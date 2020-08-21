@@ -180,6 +180,29 @@ int hasFourLayers()
 	return (0); //Nope
 }
 
+//Detect if board has six layers
+int hasSixLayers()
+{
+	board(B)
+	{
+		B.signals(S)
+		{
+			S.wires(W)
+			{
+				if (W.layer == 3)
+				{
+					return (1);
+				}
+				if (W.layer == 14)
+				{
+					return (1);
+				}
+			}
+		}
+	}
+	return (0); //Nope
+}
+
 //Detect if parts are on a given layer of the board
 int hasPartsOnLayer(int layerNumber)
 {
@@ -1143,6 +1166,9 @@ void orderingInstructionsWrite()
 	if (hasFourLayers() == 1)
 		numberOfLayers = 4;
 
+	if (hasSixLayers() == 1)
+		numberOfLayers = 6;
+
 	string stencilsRequired = "none";
 	//if(hasTopParts() && hasBottomParts()) stencilsRequired = "top+bottom";
 	//else if(hasTopParts()) stencilsRequired = "top";
@@ -1183,9 +1209,13 @@ void orderingInstructionsWrite()
 		printf("pcs per panel, %d\n", pcsPerPanel);
 		printf("min trace width, %.4fmm / %.4fin\n", minTraceWidth, convertMMToInches(minTraceWidth));
 		printf("min drill size, %.4fmm / %.4fin\n", minDrillSize, convertMMToInches(minDrillSize));
-		if (numberOfLayers > 2)
+		if (numberOfLayers == 4)
 		{
 			printf("filename to layer stackup 1/2/3/4: GTL, GL2, GL3, GBL\n");
+		}
+		if (numberOfLayers == 6)
+		{
+			printf("filename to layer stackup 1/2/3/4/5/6: GTL, GL2, GL3, GL4, GL5, GBL\n");
 		}
 	}
 }

@@ -113,6 +113,29 @@ int hasFourLayers()
 	return (0); //Nope
 }
 
+//Detect if board has six layers
+int hasSixLayers()
+{
+	board(B)
+	{
+		B.signals(S)
+		{
+			S.wires(W)
+			{
+				if (W.layer == 3)
+				{
+					return (1);
+				}
+				if (W.layer == 14)
+				{
+					return (1);
+				}
+			}
+		}
+	}
+	return (0); //Nope
+}
+
 //Detect if parts are on a given layer of the board
 int hasPartsOnLayer(int layerNumber)
 {
@@ -235,8 +258,8 @@ void createGerbers()
 	}
 
 	//The new version of Eagle (v8/9) has a faster CAM processor. We call it with the CAM file and we get gerbers out.
-    sprintf(s, " & echo Running New CAM Processor on %s", baseFileName);
-    commandToRun += s;
+	sprintf(s, " & echo Running New CAM Processor on %s", baseFileName);
+	commandToRun += s;
 
 	//1,217 seconds to complete CAM using old method
 	//42 seconds to CAM the BlackBoard panel (8.8 x 7.2" with massive amounts of intense silkscreen artifacts)
@@ -264,7 +287,10 @@ void createGerbers()
 	}
 
 	string camFileLocation = pathToCAMs + "/sfe-gerb274x-2layer.cam"; //You must have the SparkFun CAM files in the CAM directory setting so that Eagle can find this file
-	if (hasFourLayers() == 1)
+
+	if (hasSixLayers() == 1)
+		camFileLocation = pathToCAMs + "/sfe-gerb274x-6layer.cam"; //You must have the SparkFun CAM files in the CAM directory setting so that Eagle can find this file
+	else if (hasFourLayers() == 1)
 		camFileLocation = pathToCAMs + "/sfe-gerb274x-4layer.cam"; //You must have the SparkFun CAM files in the CAM directory setting so that Eagle can find this file
 
 	sprintf(fileLocation, "%s%s.brd", get_project_path(), baseFileName);
@@ -428,7 +454,14 @@ void createGerbers()
 		fileList += " \"" + projectDirectory + baseFileName + ".GBO" + "\"";
 		fileList += " \"" + projectDirectory + baseFileName + ".GBS" + "\"";
 
-		if (hasFourLayers() == 1)
+		if (hasSixLayers() == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GL2" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL3" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL4" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL5" + "\"";
+		}
+		else if (hasFourLayers() == 1)
 		{
 			fileList += " \"" + projectDirectory + baseFileName + ".GL2" + "\"";
 			fileList += " \"" + projectDirectory + baseFileName + ".GL3" + "\"";
@@ -472,7 +505,14 @@ void createGerbers()
 		fileList += " \"" + projectDirectory + baseFileName + ".GBO" + "\"";
 		fileList += " \"" + projectDirectory + baseFileName + ".GBS" + "\"";
 
-		if (hasFourLayers() == 1)
+		if (hasSixLayers() == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GL2" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL3" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL4" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL5" + "\"";
+		}
+		else if (hasFourLayers() == 1)
 		{
 			fileList += " \"" + projectDirectory + baseFileName + ".GL2" + "\"";
 			fileList += " \"" + projectDirectory + baseFileName + ".GL3" + "\"";
@@ -519,7 +559,11 @@ if (board)
 
 		dlgHBoxLayout { dlgSpacing(300); }
 
-		if (hasFourLayers() == 1)
+		if (hasSixLayers() == 1)
+		{
+			dlgHBoxLayout { dlgLabel("<font color=red>Note:</font> This is a six layer board\t"); }
+		}
+		else if (hasFourLayers() == 1)
 		{
 			dlgHBoxLayout { dlgLabel("<font color=red>Note:</font> This is a four layer board\t"); }
 		}
