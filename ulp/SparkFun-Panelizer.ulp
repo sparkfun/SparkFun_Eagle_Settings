@@ -505,9 +505,13 @@ void panelizer()
 		panelWidth += (verticalGap * 2);
 
 	panelHeight = (designHeight + horizontalGap) * numberOfRows - horizontalGap;
-	panelHeight += borderWidth;
+	panelHeight += borderWidth * 2;
 	if (drawPanelBorders == 1)
-		panelHeight += (horizontalGap);
+		panelHeight += (horizontalGap * 2);
+
+	// string x;
+	// sprintf(x, "%f", panelHeight * 25.4);
+	// dlgMessageBox(x);
 
 	//Check to see if panel is big enough for v-scoring
 	//Min size is 7cm x 7cm if v-scoring is required
@@ -670,7 +674,12 @@ void panelizer()
 				real yCoordLow = 0;
 				yCoordLow -= (borderWidth + horizontalGap);
 
-				real yCoordHigh = panelHeight + 0.25;
+				real yCoordHigh = panelHeight - (borderWidth * 2) + 0.25;
+
+				if (exposeCardEdge == 1)
+				{
+					yCoordHigh = panelHeight + 0.25;
+				}
 
 				sprintf(s, "WIRE 0.015 (%.4f %.4f) (%.4f %.4f);\n", xCoord, yCoordLow, xCoord, yCoordHigh);
 				bigScript += s;
@@ -762,7 +771,7 @@ void panelizer()
 		//Draw right box
 		real rightXleft = panelWidth - verticalGap - (borderWidth * 2); //panelWidth includes borders as needed, but X starts at 0-borderWidth
 		real rightXright = rightXleft + borderWidth;
-		real rightYupper = panelHeight - borderWidth - 0.02;
+		real rightYupper = panelHeight - horizontalGap - (borderWidth * 2) - 0.02;
 		if (exposeCardEdge == 1)
 			rightYupper = panelHeight;
 
@@ -779,8 +788,8 @@ void panelizer()
 		//Draw top box
 		real topXleft = 0 - verticalGap - borderWidth;
 		real topXright = panelWidth - borderWidth - verticalGap;
-		real topYlower = panelHeight - borderWidth;
-		real topYupper = panelHeight;
+		real topYlower = panelHeight - (borderWidth * 2) - horizontalGap;
+		real topYupper = panelHeight - borderWidth - horizontalGap;
 
 		if (exposeCardEdge == 0)
 		{
@@ -798,7 +807,7 @@ void panelizer()
 		real leftXleft = 0 - borderWidth - verticalGap;
 		real leftXright = 0 - verticalGap;
 		real leftYlower = 0 - horizontalGap + 0.02;
-		real leftYupper = panelHeight - borderWidth - 0.02;
+		real leftYupper = panelHeight - horizontalGap - (borderWidth * 2) - 0.02;
 		if (exposeCardEdge == 1)
 			leftYupper = panelHeight;
 
@@ -815,7 +824,7 @@ void panelizer()
 		//Upper two fiducials live on one breakaway edge
 		//Fiducials are not in center of border, they are nearer the panel so the clips don't obstruct their view
 		real fiducial_x_1 = 0 + borderWidth + verticalGap;
-		real fiducial_y_1 = panelHeight - borderWidth + (borderWidth / 4);
+		real fiducial_y_1 = panelHeight - (borderWidth * 2) - horizontalGap + (borderWidth / 4);
 		if (exposeCardEdge == 1)
 		{
 			//Expose the card edge. Move the top left fiducial to the left border
@@ -826,7 +835,7 @@ void panelizer()
 		{
 			//Move the top left fiducial to the left border
 			fiducial_x_1 = 0 - (borderWidth / 3) - verticalGap;
-			fiducial_y_1 = panelHeight - borderWidth - (borderWidth / 4);
+			fiducial_y_1 = panelHeight - (borderWidth * 2) - horizontalGap - (borderWidth / 2);
 		}
 		bigScript += "LAYER 1;\n"; //Top layer
 		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%.4f %.4f);\n", fiducial_x_1, fiducial_y_1);
@@ -835,7 +844,7 @@ void panelizer()
 		bigScript += s;
 
 		real fiducial_x_2 = panelWidth - (borderWidth * 3) - (borderWidth / 4);
-		real fiducial_y_2 = panelHeight - borderWidth + (borderWidth / 4);
+		real fiducial_y_2 = panelHeight - (borderWidth * 2) - horizontalGap + (borderWidth / 4);
 		if (exposeCardEdge == 1)
 		{
 			//Expose the card edge. Move the top right fiducial to the right border
@@ -846,7 +855,7 @@ void panelizer()
 		{
 			//Expose the card edge. Move the top right fiducial to the right border
 			fiducial_x_2 = panelWidth - (borderWidth * 2) - verticalGap + (borderWidth / 3);
-			fiducial_y_2 = panelHeight - borderWidth - (borderWidth / 4);
+			fiducial_y_2 = panelHeight - (borderWidth * 2) - horizontalGap - (borderWidth / 2);
 		}
 		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%.4f %.4f);\n", fiducial_x_2, fiducial_y_2);
 		bigScript += s;
@@ -861,7 +870,7 @@ void panelizer()
 		{
 			//Expose the card edge. Move the lower fiducial to the left border
 			fiducial_x_3 = 0 - (borderWidth / 3) - verticalGap;
-			fiducial_y_3 = 0 + horizontalGap + borderWidth;
+			fiducial_y_3 = 0 + borderWidth; //+ horizontalGap;
 		}
 
 		sprintf(s, "ADD FIDUCIAL-1.5X3@SPARKFUN-RETIRED (%.4f %.4f);\n", fiducial_x_3, fiducial_y_3);
