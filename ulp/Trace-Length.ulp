@@ -1,0 +1,247 @@
+/*
+  This ULP was originally created by EAGLE PCB by
+  "A. Zaffran 05.04.2000 alf@cadsoft.de"
+
+  Modified November 18th, 2020 by N. Seidle to make nets searchable.
+  Often there are 2 or 5 nets you need to match lengths. 
+
+  THIS PROGRAM IS PROVIDED AS IS AND WITHOUT WARRANTY OF ANY KIND, EXPRESSED OR IMPLIED
+*/
+
+real f, WLtotal;
+int index[];
+
+// ** aus "Mechanik der Elektronik"
+// mm  <1  1  2  3  4  5  6  7  8  9 10 11 12 13 mm Leiterbreite bei 35 um Cu
+
+real k[] = {9, 8.8, 6, 4, 3.2, 2.9, 2.9, 2.9, 2.9, 2.9, 2.9, 2.9, 2.9, 2.9, 2.9};
+
+//               _______________________
+//  Imax ~ 5.25 V [d x b x (d + b)] x k      ||  (tL ~60°)
+//
+//  d = um Cu-Kaschierung
+//  b = Breite mm
+//  k = Korrekturwert aus Tabelle      02.02.2000 alf
+//  ** aus "Mechanik der Elektronik"
+
+real Cu = 0.035; // 35 um Cu Kaschierung
+
+real Length[], Freq[], Widthmin[], Widthmax[];
+string Signal[];
+
+real c = 299800; // Lichtgechwindigkeit Vakuum in [km/s]
+
+int n = 0;
+int t;
+string data[];
+string h;
+int note = 0;
+
+int true = 1;
+int false = 0;
+int abort = false;
+string netFilter = "CC";
+
+//Get the name of this brd (no extension, no directory)
+string get_project_name()
+{
+  if (board)
+    board(B) return (filesetext(filename(B.name), ""));
+  if (schematic)
+    schematic(B) return (filesetext(filename(B.name), ""));
+}
+
+string get_project_path()
+{
+  if (board)
+    board(B) return (filedir(B.name));
+  if (schematic)
+    schematic(B) return (filedir(B.name));
+}
+
+void configWrite()
+{
+  //Get the name of this brd (no extension, no directory)
+  string baseFileName = get_project_name();
+  string configFile = get_project_path() + baseFileName + "-TraceLength.txt";
+
+  output(configFile)
+  {
+    printf("%s\n", netFilter);
+  }
+}
+
+void configRead()
+{
+  //Get the name of this brd (no extension, no directory)
+  string baseFileName = get_project_name();
+  string configFile = get_project_path() + baseFileName + "-TraceLength.txt";
+
+  if (filesize(configFile))
+  { //Check if file exists
+    string data[];
+    int line = fileread(data, configFile);
+    if (line >= 0)
+    {
+      netFilter = data[0];
+    }
+  }
+}
+
+void dialog(void)
+{
+  int select = 0;
+  int Result = dlgDialog("Wire length of Layout")
+  {
+    dlgLabel("List of signals with length and its max. frequency / current\n");
+
+    string lab;
+    sprintf(lab, " Cu thickness = %.3f mm", Cu);
+    dlgLabel(lab);
+    dlgListView("", data, select);
+    dlgStretch(0);
+
+    dlgHBoxLayout
+    {
+      dlgStretch(1);
+      dlgLabel("&Filters");
+      dlgStringEdit(netFilter);
+      dlgPushButton("+Apply")
+      {
+        abort = false;
+        dlgAccept();
+      }
+      dlgPushButton("-Close")
+      {
+        abort = true;
+        dlgReject();
+      }
+    }
+  };
+}
+
+real WireLength(real x1, real x2, real y1, real y2)
+{
+  return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2));
+}
+
+real ArcLength(real ang1, real ang2, real radius)
+{
+  return radius * 2 * PI / 360 * (ang2 - ang1);
+}
+
+real Frequency(real c, real l)
+{
+  return c / l;
+}
+
+void WireWidth(string sig, real w)
+{
+  // ermitteln der min-max Leiterbahnbreite
+  if (w < Widthmin[n])
+    Widthmin[n] = w;
+  if (w > Widthmax[n])
+    Widthmax[n] = w;
+}
+
+//Finds a string in a string no matter where, no matter capitalization
+int containsString(string toSearch, string toFind)
+{
+  int pos = strstr(strlwr(toSearch), strlwr(toFind));
+  if (pos >= 0) //String found
+  {
+    return (1);
+  }
+
+  return (0);
+}
+
+real imax(real breite)
+{
+  return (breite == 0) ? 0 : 5.25 * sqrt((Cu * breite * (Cu + breite)) * k[int(trunc(breite))]);
+}
+
+if (board)
+{
+  configRead(); //Get previous netFilter
+
+  //Loop until user presses close button
+  while (abort == false)
+  {
+    //dlgMessageBox(netFilter);
+    for (int x = 0; x < n; x++)
+      data[x] = "";
+    n = 0;
+
+    board(B)
+    {
+      B.signals(S)
+      {
+        WLtotal = 0;
+        Widthmin[n] = 32000;
+        Widthmax[n] = 0;
+        S.wires(W)
+        {
+          if (W.layer < 17)
+          { // nur Kupfer-Layer
+            if (W.arc)
+            {
+              WLtotal += ArcLength(W.arc.angle1, W.arc.angle2, u2mm(W.arc.radius));
+            }
+            else
+            {
+              WLtotal += WireLength(u2mm(W.x2), u2mm(W.x1), u2mm(W.y2), u2mm(W.y1));
+            }
+            WireWidth(S.name, u2mm(W.width));
+          }
+        }
+        if (WLtotal != 0)
+        {
+          if (containsString(S.name, netFilter))
+          {
+            Signal[n] = S.name;
+            Length[n] = WLtotal;
+            Freq[n] = Frequency(c, WLtotal);
+            ++n;
+          }
+        }
+      }
+      sort(n, index, Freq);
+
+      sprintf(h, "Signal\tf max. [MHz]\tl [mm]\tA [mm2]\tR [mOhm]\tw min [mm]\tw max [mm]\tImax [A]");
+      data[0] = h;
+      t = 1;
+
+      for (int i = 0; i < n; ++i)
+      {
+        real mm2 = Widthmin[index[i]] * Cu;
+        real mOhm = 0;
+        string R;
+        if (Widthmin[index[i]])
+        {
+          mOhm = (174 * Length[index[i]] / 10) / (Cu * 1000 * Widthmin[index[i]]);
+          sprintf(R, "%7.2f", mOhm);
+        }
+
+        sprintf(h, "%s\t%10.2f\t%7.3f\t%4.3f\t%s\t%6.3f\t%6.3f\t%6.2f", Signal[index[i]], Freq[index[i]], Length[index[i]], mm2, R, Widthmin[index[i]], Widthmax[index[i]], imax(Widthmin[index[i]]));
+        data[t] = h;
+
+        if (!Widthmin[index[i]])
+        {
+          note = 1;
+          sprintf(h, " ***");
+          data[t] += h;
+        }
+        t++;
+      }
+
+      dialog();
+    }
+    configWrite(); //Get previous netFilter
+  }
+}
+else
+{
+  dlgMessageBox("\n    Start this ULP in a Board     \n");
+  exit(0);
+}
