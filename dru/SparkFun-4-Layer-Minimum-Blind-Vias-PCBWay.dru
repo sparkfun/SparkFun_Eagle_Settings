@@ -1,5 +1,5 @@
 description[en] = <b>SparkFun 4 Layer Design Rules with Blind Vias for PCBWay</b>\n<p>\nThese are pretty extreme design rules reserved for 4-layer boards with blind vias. Primarily used on the Artemis module design, these rules have only been used with PCBWay (<a href="https://www.pcbway.com/capabilities.html">published rules by PBWay</a>). These rules should be avoided unless absolutely necessary and will increase fab times and complicate the ordering process.\n<ul>\n<li>4 Layer</li>\n<li>4mil Trace/Space</li>\n<li>3mil Annular Rings</li>\n<li>0.15mm/6mil Blind Vias</li>\n</ul>
-layerSetup = ((1*2)+(15*16))
+layerSetup = ([2:1+2*15+16:15])
 mtCopper = 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm
 mtIsolate = 0.213359375mm 1.0161mm 0.2mm 0.15mm 0.2mm 0.15mm 0.2mm 0.15mm 0.2mm 0.15mm 0.2mm 0.15mm 0.2mm 0.15mm 0.213359375mm
 mdWireWire = 4mil

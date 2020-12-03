@@ -1,5 +1,5 @@
 description[en] = <b>4 Layer General Rules for JLCPCB</b>\n<p>\nThese are the free and generally easy to produce 4-layer PCB design rules. You can certainly go smaller but if the design doesn't call for it, these rules provide good guidance.\n<ul>\n<li>4 Layer</li>\n<li>7mil Trace/Space</li>\n<li>7mil Annular Rings</li>\n<li>12mil Vias</li>\n</ul>
-layerSetup = (1*2*15*16)
+layerSetup = (1+2*15+16)
 mtCopper = 0.035559375mm 0.035559375mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035mm 0.035559375mm 0.035559375mm
 mtIsolate = 0.47751875mm 0.47751875mm 0.2mm 0.15mm 0.2mm 0.15mm 0.2mm 0.15mm 0.2mm 0.15mm 0.2mm 0.15mm 0.2mm 0.15mm 0.47751875mm
 mdWireWire = 7mil
