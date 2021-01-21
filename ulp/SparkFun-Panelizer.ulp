@@ -284,6 +284,25 @@ string getBoardThickness()
 	return ("1.6mm");
 }
 
+//Detect copper weight (thickness).
+//If someone has put "2oz" in any of the text on the board then return "2oz" else return "1oz".
+string getCopperWeight()
+{
+	//Search the ordering instructions box
+	board(B)
+	{
+		B.texts(T)
+		{
+			if (containsString(T.value, "2oz") == 1)
+			{
+				return ("2oz");
+			}
+		}
+	}
+
+	return ("1oz");
+}
+
 //Search through logos on board to determine if this is a SparkX board (black)
 //SparkFun board (red), LilyPad (purple) or other (green as default)
 string getBoardColor()
@@ -1192,6 +1211,7 @@ void orderingInstructionsWrite()
 	string boardThickness = getBoardThickness(); //Search for 0.8mm text on board
 	string boardColor = getBoardColor();		 //Search board for aesthetics to determine soldermask color
 	string surfaceFinish = getSurfaceFinish();	 // Search board for surface finish
+	string copperWeight = getCopperWeight(); // Search board for copper weight
 
 	int pcsPerPanel = numberOfColumns * numberOfRows; //Total count per panel. Helps when figuring out the number of panels to order
 
@@ -1212,7 +1232,7 @@ void orderingInstructionsWrite()
 		printf("number of layers, %d\n", numberOfLayers);
 		printf("soldermask color, %s\n", boardColor);
 		printf("silkscreen color, %s\n", boardSilkColor);
-		printf("oz copper, %s\n", "1oz");
+		printf("oz copper, %s\n", copperWeight);
 		printf("finish, %s\n", surfaceFinish);
 		printf("stencils, %s\n", stencilsRequired);
 		printf("pcs per panel, %d\n", pcsPerPanel);
