@@ -82,7 +82,7 @@ void configRead()
 	string configFile = get_project_path() + "Production/" + baseFileName + "-PanelizerSettings.txt";
 
 	if (filesize(configFile))
-	{ //Check if file exists
+	{						  //Check if file exists
 		configFileExists = 1; // used to know if this is a "fresh" use of the ULP.
 		string data[];
 		int line = fileread(data, configFile);
@@ -1083,16 +1083,16 @@ void calculateRecommendedPanelSize()
 	real area_total_5x7 = 0; // used to compare with 7x5 calc and decide which is a larger area and therefore best.
 
 	// how many copies of the board can we fit on the x axis array before we get above our max allowed?
-	while( (x_total_5x7 + designWidth) < 5.0 )
+	while ((x_total_5x7 + designWidth) < 5.0)
 	{
 		x_total_5x7 = x_total_5x7 + designWidth;
 	}
 
 	// how many copies of the board can we fit on the y axis array before we get above our max allowed?
-	while( (y_total_5x7 + designHeight) < 7.0 )
+	while ((y_total_5x7 + designHeight) < 7.0)
 	{
 		y_total_5x7 = y_total_5x7 + designHeight;
-	}	
+	}
 	area_total_5x7 = x_total_5x7 * y_total_5x7;
 
 	// try 7x5
@@ -1100,17 +1100,17 @@ void calculateRecommendedPanelSize()
 	real y_total_7x5 = 0;
 	real area_total_7x5 = 0;
 	// how many copies of the board can we fit on the x axis array before we get above our max allowed?
-	while( (x_total_7x5 + designWidth) < 7.0 )
+	while ((x_total_7x5 + designWidth) < 7.0)
 	{
 		x_total_7x5 = x_total_7x5 + designWidth;
 	}
 
 	// how many copies of the board can we fit on the y axis array before we get above our max allowed?
-	while( (y_total_7x5 + designHeight) < 5.0 )
+	while ((y_total_7x5 + designHeight) < 5.0)
 	{
 		y_total_7x5 = y_total_7x5 + designHeight;
-	}	
-	area_total_7x5 = x_total_7x5 * y_total_7x5;	
+	}
+	area_total_7x5 = x_total_7x5 * y_total_7x5;
 
 	// see which option has the best use of the area of the panel
 
@@ -1280,7 +1280,7 @@ void orderingInstructionsWrite()
 	string boardThickness = getBoardThickness(); //Search for 0.8mm text on board
 	string boardColor = getBoardColor();		 //Search board for aesthetics to determine soldermask color
 	string surfaceFinish = getSurfaceFinish();	 // Search board for surface finish
-	string copperWeight = getCopperWeight(); // Search board for copper weight
+	string copperWeight = getCopperWeight();	 // Search board for copper weight
 
 	int pcsPerPanel = numberOfColumns * numberOfRows; //Total count per panel. Helps when figuring out the number of panels to order
 
@@ -1429,14 +1429,14 @@ else if (board)
 
 	sprintf(verticalGapString, "Recommended Vertical Gap for Overhang: %.2f", verticalGapNeeded);
 	sprintf(horizontalGapString, "Recommended Horizontal Gap for Overhang: %.2f", horizontalGapNeeded);
-	sprintf(designXYString, "Width x Height: %.2f x %.2f", designWidth, designHeight);
+	sprintf(designXYString, "Design Width x Height: %.2f x %.2f", designWidth, designHeight);
 	sprintf(recommendedPanelSizeString, "Recommended Panel Size: %.2f x %.2f", recPanelWidth, recPanelHeight);
 
 	// start out the GUI with the recommended panel sizes, but the user can change them as needed
 	// check to see if the config file exhists (set in configRead())
 	// if it exhists, that means the user may have already used the ULP once, and we want to use their previous
 	// settings, not the recommended.
-	if(configFileExists == 0)
+	if (configFileExists == 0)
 	{
 		// add 5% so that the panelizer tool will still work.
 		// if it is exactly the size we want, then it will not attempt/expand to our desired x/y
@@ -1471,7 +1471,7 @@ else if (board)
 					horizontalGapNeeded = 0.12;
 				sprintf(verticalGapString, "Recommended Vertical Gap for Overhang: %.2f", verticalGapNeeded);
 				sprintf(horizontalGapString, "Recommended Horizontal Gap for Overhang: %.2f", horizontalGapNeeded);
-				sprintf(designXYString, "Width x Height: %.2f x %.2f", designWidth, designHeight);
+				sprintf(designXYString, "Design Width x Height: %.2f x %.2f", designWidth, designHeight);
 				sprintf(recommendedPanelSizeString, "Recommended Panel Size: %.2f x %.2f", recPanelWidth, recPanelHeight);
 
 				dlgRedisplay();
@@ -1497,17 +1497,16 @@ else if (board)
 					horizontalGapNeeded = 3;
 				sprintf(verticalGapString, "Recommended Vertical Gap for Overhang: %.2f", verticalGapNeeded);
 				sprintf(horizontalGapString, "Recommended Horizontal Gap for Overhang: %.2f", horizontalGapNeeded);
-				sprintf(designXYString, "Width x Height: %.2f x %.2f", designWidth, designHeight);
+				sprintf(designXYString, "Design Width x Height: %.2f x %.2f", designWidth, designHeight);
 				sprintf(recommendedPanelSizeString, "Recommended Panel Size: %.2f x %.2f", recPanelWidth, recPanelHeight);
 
 				dlgRedisplay();
 			}
-			dlgLabel(designXYString, 1);
-			dlgLabel(recommendedPanelSizeString, 1);
 		}
 
 		dlgGroup("Panel Size")
 		{
+			dlgLabel(designXYString, 1);
 			dlgRadioButton("Must be smaller than", panelMustBeLargerThanDimension);
 			dlgRadioButton("Must be larger than", panelMustBeLargerThanDimension);
 
@@ -1521,6 +1520,7 @@ else if (board)
 				dlgLabel("Y:\t");
 				dlgRealEdit(panelSizeY, 1, 600);
 			}
+			dlgLabel(recommendedPanelSizeString, 1);
 		}
 
 		dlgGroup("Gaps")
