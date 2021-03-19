@@ -111,8 +111,8 @@ real recPanelWidth;
 real recPanelHeight;
 real xMax = 0;
 real yMax = 0;
-real xMin = 0;
-real yMin = 0;
+real xMin = -1000;
+real yMin = -1000;
 real xOutlyingMax = -100;
 real xOutlyingMin = 100;
 real yOutlyingMax = -100;
@@ -448,7 +448,7 @@ void getOutlyingOrigins()
 
 			//There are some elements we need to ignore, for example the
 			//Special instruction box is all tDocu and always far outside the board outline
-			if (E.package.name == "CREATIVE_COMMONS" || E.package.name == "ORDERING_INSTRUCTIONS")
+			if (E.package.name == "CREATIVE_COMMONS" || E.package.name == "ORDERING_INSTRUCTIONS" || E.package.name == "DUMMY") //Ignore Dummy anchor used with multi-schematic frames
 			{
 				//Ignore the location of this element
 			}
