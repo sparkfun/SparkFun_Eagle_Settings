@@ -17,11 +17,13 @@
 string designRulesLocation; //Used to store the temp location of the DRU file for the original design
 string s = "";
 
+char configFileExists = 0; // used to know if we want to populate recommended settings on a "fresh" use of this ULP.
+
 //Config options we want to save
 real verticalGap = 0.02; //PCBWay needs at least 0.02 inches between copies
 real horizontalGap = 0.02;
-real panelSizeX = 3.0;
-real panelSizeY = 2.0;
+real panelSizeX = 5.5;
+real panelSizeY = 7.5;
 int vScoreIndicators = 0;
 int drawPanelBorders = 0;
 int exposeCardEdge = 0;
@@ -80,7 +82,8 @@ void configRead()
 	string configFile = get_project_path() + "Production/" + baseFileName + "-PanelizerSettings.txt";
 
 	if (filesize(configFile))
-	{ //Check if file exists
+	{						  //Check if file exists
+		configFileExists = 1; // used to know if this is a "fresh" use of the ULP.
 		string data[];
 		int line = fileread(data, configFile);
 		if (line >= 4)
@@ -104,6 +107,8 @@ void configRead()
 
 real designWidth; //In inches
 real designHeight;
+real recPanelWidth;
+real recPanelHeight;
 real xMax = 0;
 real yMax = 0;
 real xMin = 0;
@@ -1061,6 +1066,70 @@ void calculateDesignDimensions()
 	}
 }
 
+// look at board dimensions and find the best x/y that fits close to either 5"x7" or 7"x5"
+// this function originally written by Pete Lewis 3/12/2021
+void calculateRecommendedPanelSize()
+{
+	// Note, 5"x7" is the optimal panel size for SparkFun Electronics production PnP machines.
+	// But sometimes the panel can actually get closer by being 7x5.
+	// Also note, to got over or under by 1/2 an inch is okay.
+	// Using designWidth and designHeight we can determine what the best panel size is.
+	// Need to consider the standard tabs as well (0.25"), because we want the outside of the panel to fit into 5x7 or 7x5
+
+	// try 5x7
+	// keep adding up designWidths and designHeights while stying under 5".
+	real x_total_5x7 = 0;
+	real y_total_5x7 = 0;
+	real area_total_5x7 = 0; // used to compare with 7x5 calc and decide which is a larger area and therefore best.
+
+	// how many copies of the board can we fit on the x axis array before we get above our max allowed?
+	while ((x_total_5x7 + designWidth) < 5.0)
+	{
+		x_total_5x7 = x_total_5x7 + designWidth;
+	}
+
+	// how many copies of the board can we fit on the y axis array before we get above our max allowed?
+	while ((y_total_5x7 + designHeight) < 7.0)
+	{
+		y_total_5x7 = y_total_5x7 + designHeight;
+	}
+	area_total_5x7 = x_total_5x7 * y_total_5x7;
+
+	// try 7x5
+	real x_total_7x5 = 0;
+	real y_total_7x5 = 0;
+	real area_total_7x5 = 0;
+	// how many copies of the board can we fit on the x axis array before we get above our max allowed?
+	while ((x_total_7x5 + designWidth) < 7.0)
+	{
+		x_total_7x5 = x_total_7x5 + designWidth;
+	}
+
+	// how many copies of the board can we fit on the y axis array before we get above our max allowed?
+	while ((y_total_7x5 + designHeight) < 5.0)
+	{
+		y_total_7x5 = y_total_7x5 + designHeight;
+	}
+	area_total_7x5 = x_total_7x5 * y_total_7x5;
+
+	// see which option has the best use of the area of the panel
+
+	if (area_total_5x7 > area_total_7x5)
+	{
+		recPanelWidth = x_total_5x7;
+		recPanelHeight = y_total_5x7;
+	}
+	else
+	{
+		recPanelWidth = x_total_7x5;
+		recPanelHeight = y_total_7x5;
+	}
+
+	// add in panel tabs (each one is 0.25 inchs = 0.5 inch addition)
+	recPanelWidth = recPanelWidth + 0.5;
+	recPanelHeight = recPanelHeight + 0.5;
+}
+
 //Change any / in a string to \
 //Useful for directory structure before calling a cmd
 string convertForwardToBackSlashes(string thing)
@@ -1211,7 +1280,7 @@ void orderingInstructionsWrite()
 	string boardThickness = getBoardThickness(); //Search for 0.8mm text on board
 	string boardColor = getBoardColor();		 //Search board for aesthetics to determine soldermask color
 	string surfaceFinish = getSurfaceFinish();	 // Search board for surface finish
-	string copperWeight = getCopperWeight(); // Search board for copper weight
+	string copperWeight = getCopperWeight();	 // Search board for copper weight
 
 	int pcsPerPanel = numberOfColumns * numberOfRows; //Total count per panel. Helps when figuring out the number of panels to order
 
@@ -1329,8 +1398,12 @@ else if (board)
 
 	calculateDesignDimensions(); //Detect any overhanging parts. It will set designWidth/designHeight
 
+	calculateRecommendedPanelSize(); // look at board dimensions and find the best x/y that fits close to either 5"x7" or 7"x5"
+
 	string horizontalGapString = "";
 	string verticalGapString = "";
+	string designXYString = "";
+	string recommendedPanelSizeString = "";
 
 	//We have to create the strings before the GUI is loaded
 	if (panelUnits == 0) //Inches
@@ -1348,10 +1421,28 @@ else if (board)
 			verticalGapNeeded = 3;
 		if (horizontalGapNeeded > 0.51 && horizontalGapNeeded < 3)
 			horizontalGapNeeded = 3;
+		designWidth = convertInchToMM(designWidth);
+		designHeight = convertInchToMM(designHeight);
+		recPanelWidth = convertInchToMM(recPanelWidth);
+		recPanelHeight = convertInchToMM(recPanelHeight);
 	}
 
 	sprintf(verticalGapString, "Recommended Vertical Gap for Overhang: %.2f", verticalGapNeeded);
 	sprintf(horizontalGapString, "Recommended Horizontal Gap for Overhang: %.2f", horizontalGapNeeded);
+	sprintf(designXYString, "Design Width x Height: %.2f x %.2f", designWidth, designHeight);
+	sprintf(recommendedPanelSizeString, "Recommended Panel Size: %.2f x %.2f", recPanelWidth, recPanelHeight);
+
+	// start out the GUI with the recommended panel sizes, but the user can change them as needed
+	// check to see if the config file exhists (set in configRead())
+	// if it exhists, that means the user may have already used the ULP once, and we want to use their previous
+	// settings, not the recommended.
+	if (configFileExists == 0)
+	{
+		// add 5% so that the panelizer tool will still work.
+		// if it is exactly the size we want, then it will not attempt/expand to our desired x/y
+		panelSizeX = recPanelWidth * 1.05;
+		panelSizeY = recPanelHeight * 1.05;
+	}
 
 	//GUI
 	int dstatus = dlgDialog("Panel Generation Options")
@@ -1368,6 +1459,10 @@ else if (board)
 				horizontalGap = convertMMToInches(horizontalGap);
 				verticalGapNeeded = convertMMToInches(verticalGapNeeded);
 				horizontalGapNeeded = convertMMToInches(horizontalGapNeeded);
+				designWidth = convertMMToInches(designWidth);
+				designHeight = convertMMToInches(designHeight);
+				recPanelWidth = convertMMToInches(recPanelWidth);
+				recPanelHeight = convertMMToInches(recPanelHeight);
 
 				//PCBWay & JLCPCB requires 3mm minimum for route-out areas
 				if (verticalGapNeeded > 0.02 && verticalGapNeeded < 0.12)
@@ -1376,6 +1471,8 @@ else if (board)
 					horizontalGapNeeded = 0.12;
 				sprintf(verticalGapString, "Recommended Vertical Gap for Overhang: %.2f", verticalGapNeeded);
 				sprintf(horizontalGapString, "Recommended Horizontal Gap for Overhang: %.2f", horizontalGapNeeded);
+				sprintf(designXYString, "Design Width x Height: %.2f x %.2f", designWidth, designHeight);
+				sprintf(recommendedPanelSizeString, "Recommended Panel Size: %.2f x %.2f", recPanelWidth, recPanelHeight);
 
 				dlgRedisplay();
 			}
@@ -1388,6 +1485,10 @@ else if (board)
 				horizontalGap = convertInchToMM(horizontalGap);
 				verticalGapNeeded = convertInchToMM(verticalGapNeeded);
 				horizontalGapNeeded = convertInchToMM(horizontalGapNeeded);
+				designWidth = convertInchToMM(designWidth);
+				designHeight = convertInchToMM(designHeight);
+				recPanelWidth = convertInchToMM(recPanelWidth);
+				recPanelHeight = convertInchToMM(recPanelHeight);
 
 				//PCBWay & JLCPCB requires 3mm minimum for route-out areas
 				if (verticalGapNeeded > 0.51 && verticalGapNeeded < 3)
@@ -1396,6 +1497,8 @@ else if (board)
 					horizontalGapNeeded = 3;
 				sprintf(verticalGapString, "Recommended Vertical Gap for Overhang: %.2f", verticalGapNeeded);
 				sprintf(horizontalGapString, "Recommended Horizontal Gap for Overhang: %.2f", horizontalGapNeeded);
+				sprintf(designXYString, "Design Width x Height: %.2f x %.2f", designWidth, designHeight);
+				sprintf(recommendedPanelSizeString, "Recommended Panel Size: %.2f x %.2f", recPanelWidth, recPanelHeight);
 
 				dlgRedisplay();
 			}
@@ -1403,6 +1506,7 @@ else if (board)
 
 		dlgGroup("Panel Size")
 		{
+			dlgLabel(designXYString, 1);
 			dlgRadioButton("Must be smaller than", panelMustBeLargerThanDimension);
 			dlgRadioButton("Must be larger than", panelMustBeLargerThanDimension);
 
@@ -1416,6 +1520,7 @@ else if (board)
 				dlgLabel("Y:\t");
 				dlgRealEdit(panelSizeY, 1, 600);
 			}
+			dlgLabel(recommendedPanelSizeString, 1);
 		}
 
 		dlgGroup("Gaps")
