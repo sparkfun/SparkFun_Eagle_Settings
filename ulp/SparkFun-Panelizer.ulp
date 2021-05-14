@@ -448,7 +448,7 @@ void getOutlyingOrigins()
 
 			//There are some elements we need to ignore, for example the
 			//Special instruction box is all tDocu and always far outside the board outline
-			if (E.package.name == "CREATIVE_COMMONS" || E.package.name == "ORDERING_INSTRUCTIONS" || E.package.name == "DUMMY") //Ignore Dummy anchor used with multi-schematic frames
+			if (E.package.name == "CREATIVE_COMMONS" || E.package.name == "ORDERING_INSTRUCTIONS" || E.package.name == "PRODUCTION_INSTRUCTIONS" || E.package.name == "DUMMY") //Ignore Dummy anchor used with multi-schematic frames
 			{
 				//Ignore the location of this element
 			}
@@ -1002,7 +1002,7 @@ void calculateDesignDimensions()
 
 			//There are some elements we need to ignore, for example the
 			//Special instruction box is all tDocu and always far outside the board outline
-			if (E.package.name == "ORDERING_INSTRUCTIONS")
+			if (E.package.name == "ORDERING_INSTRUCTIONS" || E.package.name == "PRODUCTION_INSTRUCTIONS")
 			{
 				//Ignore the location of this element
 			}
