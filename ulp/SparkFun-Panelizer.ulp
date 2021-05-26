@@ -268,7 +268,7 @@ real convertMMToInches(real mm)
 }
 
 //Detect thickness of board.
-//If someone has put "0.8mm" in any of the text on the board then return 1.
+//If the board contains the text "0.8mm thickness" or "board thickness is 0.8mm" it returns 0.8mm.
 //This is a bit of a hack but all thin SparkFun designs call out the thickness in the BRD file
 string getBoardThickness()
 {
