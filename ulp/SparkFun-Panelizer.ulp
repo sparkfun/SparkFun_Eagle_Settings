@@ -272,20 +272,31 @@ real convertMMToInches(real mm)
 //This is a bit of a hack but all thin SparkFun designs call out the thickness in the BRD file
 string getBoardThickness()
 {
-	string boardThickness = "1.6mm";
-
 	//Search the ordering instructions box
 	board(B)
 	{
 		B.texts(T)
 		{
-			if (containsString(T.value, "0.8mm") == 1)
+			if (containsString(T.value, "0.8mm Thickness") == 1)
 			{
 				return ("0.8mm");
+			}
+			if (containsString(T.value, "Board Thickness is 0.8mm") == 1)
+			{
+				return ("0.8mm");
+			}
+			if (containsString(T.value, "1.6mm Thickness") == 1)
+			{
+				return ("1.6mm");
+			}
+			if (containsString(T.value, "Board Thickness is 1.6mm") == 1)
+			{
+				return ("1.6mm");
 			}
 		}
 	}
 
+	dlgMessageBox("Warning: Board thickness not found. Assuming 1.6mm");
 	return ("1.6mm");
 }
 
