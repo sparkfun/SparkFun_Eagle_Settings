@@ -33,6 +33,7 @@ int generateBottomStencil = 0;
 int panelUnits = 0;						//Default to inches
 int panelMustBeLargerThanDimension = 0; //Default to 'must be less than'
 int leftRightFiducials = 0;				// Move panel fiducials to the left and right sides (instead of top and bottom)
+int removeRightmostVerticalGap = 0;     // Remove the far right virtcal gap and use a V-score in stead (adds strength to panel if gap is not needed)
 
 //Get the name of this brd (no extension, no directory)
 string get_project_name()
@@ -72,6 +73,7 @@ void configWrite()
 		printf("%d\n", panelMustBeLargerThanDimension);
 		printf("%d\n", exposeCardEdge);
 		printf("%d\n", leftRightFiducials);
+		printf("%d\n", removeRightmostVerticalGap);
 	}
 }
 
@@ -101,6 +103,7 @@ void configRead()
 			panelMustBeLargerThanDimension = strtol(data[10]);
 			exposeCardEdge = strtol(data[11]);
 			leftRightFiducials = strtol(data[12]);
+			removeRightmostVerticalGap = strtol(data[13]);
 		}
 	}
 }
@@ -739,6 +742,29 @@ void panelizer()
 			}
 		}
 
+		//If user wants to removed the rightmost vertical gap in exchange for a V-score, Draw a single vertical V-score line
+		if (removeRightmostVerticalGap == 1)
+		{
+			xCoord = panelWidth - (verticalGap * 2) - (borderWidth * 2) + 0.01; //panelWidth includes borders as needed, but X starts at 0-borderWidth
+			
+			real yCoordLow = 0;
+			yCoordLow -= (borderWidth + horizontalGap);
+			
+			real yCoordHigh = panelHeight - borderWidth + 0.25;
+			if (exposeCardEdge == 1)
+			{
+				yCoordHigh = panelHeight + 0.25;
+			}
+			sprintf(s, "WIRE 0.015 (%.4f %.4f) (%.4f %.4f);\n", xCoord, yCoordLow, xCoord, yCoordHigh);
+			bigScript += s;
+
+			//Add the word 'v-score' lines
+			sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT v-score (%.4f %.4f);\n",
+					xCoord,
+					yCoordHigh + 0.09);
+			bigScript += s;			
+		}
+
 		//If the vertical gap is large enough for route outs don't draw v-score lines/text
 		if (horizontalGap < 0.05)
 		{
@@ -788,6 +814,11 @@ void panelizer()
 		//Draw lower box
 		real lowerXleft = 0 - verticalGap - borderWidth;
 		real lowerXright = panelWidth - borderWidth - verticalGap;
+		if (removeRightmostVerticalGap == 1)
+		{
+			lowerXright -= verticalGap;
+			lowerXright += 0.02;
+		}
 		real lowerYupper = 0 - horizontalGap;
 		real lowerYlower = lowerYupper - borderWidth;
 
@@ -805,6 +836,11 @@ void panelizer()
 
 		//Draw right box
 		real rightXleft = panelWidth - verticalGap - (borderWidth * 2); //panelWidth includes borders as needed, but X starts at 0-borderWidth
+		if (removeRightmostVerticalGap == 1)
+		{
+			rightXleft -= verticalGap;
+			rightXleft += 0.02; // gap for V-score
+		}
 		real rightXright = rightXleft + borderWidth;
 		real rightYupper = panelHeight - horizontalGap - (borderWidth * 2) - 0.02;
 		if (exposeCardEdge == 1)
@@ -823,6 +859,11 @@ void panelizer()
 		//Draw top box
 		real topXleft = 0 - verticalGap - borderWidth;
 		real topXright = panelWidth - borderWidth - verticalGap;
+		if (removeRightmostVerticalGap == 1)
+		{
+			topXright -= verticalGap;
+			topXright += 0.02;
+		}
 		real topYlower = panelHeight - (borderWidth * 2) - horizontalGap;
 		real topYupper = panelHeight - borderWidth - horizontalGap;
 
@@ -890,6 +931,10 @@ void panelizer()
 		{
 			//Expose the card edge. Move the top right fiducial to the right border
 			fiducial_x_2 = panelWidth - (borderWidth * 2) - verticalGap + (borderWidth / 3);
+			if(removeRightmostVerticalGap == 1)
+			{
+				fiducial_x_2 -= verticalGap;
+			}
 			fiducial_y_2 = panelHeight - (borderWidth * 2) - horizontalGap - (borderWidth / 2);
 		}
 		sprintf(s, "ADD FIDUCIAL-1X2@SPARKFUN-AESTHETICS (%.4f %.4f);\n", fiducial_x_2, fiducial_y_2);
@@ -1562,6 +1607,7 @@ else if (board)
 				dlgLabel("Horizontal Gap:\t");
 				dlgRealEdit(horizontalGap, 0.0, 15);
 			}
+			dlgHBoxLayout { dlgCheckBox("Remove right-most vertical gap and use V-score in stead", removeRightmostVerticalGap); }
 		}
 
 		dlgGroup("Extra Production Bits")
