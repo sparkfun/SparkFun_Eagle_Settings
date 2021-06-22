@@ -661,12 +661,14 @@ void panelizer()
 				bigScript += "LAYER 20;\n"; //Dimension layer
 				sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' R90 (%.4f %.4f);\n", xCoord - (verticalGap / 2), yCoord + (designHeight / 2));
 				bigScript += s;
-
-				if (column == numberOfColumns - 1) //Add last text
+				if (removeRightmostVerticalGap == 0) // Add the last text, only if we didn't remove the rightmost gap
 				{
-					bigScript += "LAYER 20;\n"; //Dimension layer
-					sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' R90 (%.4f %.4f);\n", xCoord + (verticalGap / 2) + designWidth, yCoord + (designHeight / 2));
-					bigScript += s;
+					if (column == numberOfColumns - 1) //Add last text
+					{
+						bigScript += "LAYER 20;\n"; //Dimension layer
+						sprintf(s, "CHANGE ALIGN CENTER; CHANGE SIZE 0.07; CHANGE RATIO 15; TEXT 'Route Out' R90 (%.4f %.4f);\n", xCoord + (verticalGap / 2) + designWidth, yCoord + (designHeight / 2));
+						bigScript += s;
+					}
 				}
 			}
 
@@ -742,7 +744,7 @@ void panelizer()
 			}
 		}
 
-		//If user wants to removed the rightmost vertical gap in exchange for a V-score, Draw a single vertical V-score line
+		//If user wants to remove the rightmost vertical gap in exchange for a V-score, Draw a single vertical V-score line
 		if (removeRightmostVerticalGap == 1)
 		{
 			xCoord = panelWidth - (verticalGap * 2) - (borderWidth * 2) + 0.01; //panelWidth includes borders as needed, but X starts at 0-borderWidth
@@ -921,6 +923,10 @@ void panelizer()
 
 		real fiducial_x_2 = panelWidth - (borderWidth * 3) - (borderWidth / 4);
 		real fiducial_y_2 = panelHeight - (borderWidth * 2) - horizontalGap + (borderWidth / 4);
+		if(removeRightmostVerticalGap == 1)
+		{
+			fiducial_x_2 -= verticalGap;
+		}
 		if (exposeCardEdge == 1)
 		{
 			//Expose the card edge. Move the top right fiducial to the right border
