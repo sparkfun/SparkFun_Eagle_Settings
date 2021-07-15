@@ -1,0 +1,616 @@
+#usage "en: <b>Output Gerbers of a given board.</b> This script looks at how many layers, if there are bottom components, etc and outputs the necessary Gerber files. It will also zip them together if user requests it."
+"<p>Usage: run sparkfun-cammer</p>"
+	"<p>Author: <author>Nathan Seidle &lt;inathan@sparkfun.com&gt;</author><br />"
+	"Version: <em>1.0</em></p>"
+
+	/*
+	Original board dimension code came from https://gist.github.com/itavero/8042433
+	CAM code comes from https://www.element14.com/community/thread/22904/l/re-can-a-ulp-initiate-a-cam-job?displayFullThread=true
+
+	See EAGLE help file for "Command Line Options"
+
+	The ZIP creation relies on 7zip. Specifically 7za.exe the stand-alone version of 7zip. To get this you need
+	to first install 7zip, then download the "7-zip Extra" 7z stand alone console version. Use 7zip to open the 7z
+	archive. In the archive you should see the 7za.exe file. Put this in the same directory as this ULP.
+
+	TODO:
+
+	Add option to preview in gerbV upon completion
+
+	https://forums.autodesk.com/t5/eagle-forum/generate-manufacturing-data-from-a-terminal/m-p/7778090/highlight/true#M10377
+
+	eaglecon -X -dCAMJOB -j"C:\Users\OldLenny\Dropbox\Projects\SparkFun_Eagle_Settings\cam\sfe-gerb274x_newProcessor.cam" -o"C:\Users\OldLenny\Dropbox\Projects\BlackBoard\Hardware\Production" "C:\Users\OldLenny\Dropbox\Projects\BlackBoard\Hardware\Production\BlackBoard-Panel.brd"
+	42 seconds to CAM the BlackBoard panel (8.8 x 7.2" with massive amounts of intense silkscreen artifacts)
+*/
+
+	string configFile = filesetext(argv[0], ".cfg");
+
+string bottomPackages = "";
+
+//Config options we want to save
+int outputGerbers = 1;
+int outputTopStencil = 1;
+int outputBottomStencil = 1;
+int zipOutput = 1;
+int runGerbV = 1;
+
+void configWrite()
+{
+	output(configFile)
+	{
+		printf("%d\n", outputGerbers);
+		printf("%d\n", outputTopStencil);
+		printf("%d\n", outputBottomStencil);
+		printf("%d\n", zipOutput);
+		printf("%d\n", runGerbV);
+	}
+}
+
+void configRead()
+{
+	if (filesize(configFile))
+	{ //Check if file exists
+		string data[];
+		int line = fileread(data, configFile);
+		if (line >= 4)
+		{
+			outputGerbers = strtol(data[0]);
+			outputTopStencil = strtol(data[1]);
+			outputBottomStencil = strtol(data[2]);
+			zipOutput = strtol(data[3]);
+			runGerbV = strtol(data[4]);
+		}
+	}
+}
+
+//Finds a string in a string no matter where, no matter capitalization
+int containsString(string toSearch, string toFind)
+{
+	int pos = strstr(strlwr(toSearch), strlwr(toFind));
+	if (pos >= 0) //String found
+	{
+		return (1);
+	}
+
+	return (0);
+}
+
+//Detect if board has four layers
+//This was re-written to scan only for signal wires on internals layers becaused things like a microB connector uses polygons on layers 2/15
+int hasFourLayers()
+{
+	//Old way
+	/*board(B) {
+		B.layers(L) {
+			if(L.used  == 1 && L.number == 2)
+			{
+				return(1);
+			}
+			if(L.used == 1 && L.number == 15)
+			{
+				return(1);
+			}
+		}
+	}*/
+
+	board(B)
+	{
+		B.signals(S)
+		{
+			S.wires(W)
+			{
+				if (W.layer == 2)
+				{
+					return (1);
+				}
+				if (W.layer == 15)
+				{
+					return (1);
+				}
+			}
+		}
+	}
+	return (0); //Nope
+}
+
+//Detect if board has six layers
+int hasSixLayers()
+{
+	board(B)
+	{
+		B.signals(S)
+		{
+			S.wires(W)
+			{
+				if (W.layer == 3)
+				{
+					return (1);
+				}
+				if (W.layer == 14)
+				{
+					return (1);
+				}
+			}
+		}
+	}
+	return (0); //Nope
+}
+
+//Detect if parts are on a given layer of the board
+int hasPartsOnLayer(int layerNumber)
+{
+	board(B)
+	{
+		B.elements(E)
+		{
+			E.package.contacts(C)
+			{
+				if (C.smd && C.smd.layer == layerNumber)
+				{
+
+					//Ignore
+					//Fiducials, jumpers with traces as closure method, jumpers that are normally open
+					if (containsString(E.package.name, "fiducial") == 0 && containsString(E.package.name, "NC_TRACE") == 0 && containsString(E.package.name, "NC_BY_TRACE") == 0 && containsString(E.package.name, "SJ_2S-NO") == 0 && containsString(E.package.name, "SMT-JUMPER") == 0 && containsString(E.package.name, "USB-MICROB-PTH-MILL") == 0 && containsString(E.package.name, "USB-C") == 0 && containsString(E.package.name, "PAD.03X.03") == 0 //Test points
+						&& containsString(E.package.name, "PAD.03X.05") == 0 && containsString(E.package.name, "USB-SOLDER-PADS") == 0)
+					{
+						//String not found, this is a legit part
+						bottomPackages += E.package.name + ",";
+						return (1);
+					}
+				}
+			}
+		}
+	}
+
+	return (0); //Nope
+}
+
+//Detect if parts are on the top of the board
+int hasTopParts()
+{
+	return (hasPartsOnLayer(1));
+}
+
+//Detect if parts are on the bottom of the board
+int hasBottomParts()
+{
+	return (hasPartsOnLayer(16));
+}
+
+string get_project_path()
+{
+	if (board)
+		board(B) return (filedir(B.name));
+	if (schematic)
+		schematic(B) return (filedir(B.name));
+}
+
+//Change any / in a string to \
+//Useful for directory structure before calling a cmd
+string convertForwardToBackSlashes(string thing)
+{
+	//Convert forward slashes to back slashes so we can run system command
+	int pos = strrchr(thing, '/');
+	while (pos >= 0)
+	{
+		//thing = strsub(thing, 0, pos) + "\\\\" + strsub(thing, pos + 1, strlen(thing)); //Remove and replace
+		thing = strsub(thing, 0, pos) + "\\" + strsub(thing, pos + 1, strlen(thing)); //Remove and replace
+		pos = strrchr(thing, '/');													  //Look for the next forward slash
+	}
+	return (thing);
+}
+
+//Returns true if a file exists
+int FileExists(string name)
+{
+	string files[];
+	return (fileglob(files, name) != 0);
+}
+
+//CAM the current BRD file
+void createGerbers()
+{
+	//Get the name of this brd (no extension, no directory)
+	string baseFileName = "";
+	board(B)
+	{
+		baseFileName = filesetext(filename(B.name), "");
+	}
+
+	//Convert forward slashes to back slashes so we can run system commands
+	string projectDirectory = convertForwardToBackSlashes(get_project_path());
+
+	string commandToRun = "echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
+	//string commandToRun = "cmd.exe /K echo Relax. This can take a minute..."; //This is the start of the command. /C = close window
+	string s = "";
+
+	//Remove any files in the production folder left over from previous panel CAM
+	//There's a chance that a previous ULP job creates files that should not be zipped.
+	commandToRun += " && echo Removing old files";
+
+	string fileLocation = "";
+	sprintf(fileLocation, "%s%s.G*", get_project_path(), baseFileName); //Search for file using forward slashes
+	if (FileExists(fileLocation))
+	{
+		sprintf(s, "rm -rf \"%s%s.G*\"", projectDirectory, baseFileName); //Remove file with back slashes
+		commandToRun += " && " + s;
+	}
+
+	sprintf(fileLocation, "%s%s.TXT", get_project_path(), baseFileName);
+	if (FileExists(fileLocation))
+	{
+		sprintf(s, "rm -rf \"%s%s.TXT\"", projectDirectory, baseFileName);
+		commandToRun += " && " + s;
+	}
+
+	sprintf(fileLocation, "%s%s.ZIP", get_project_path(), baseFileName);
+	if (FileExists(fileLocation))
+	{
+		sprintf(s, "rm -rf \"%s%s.ZIP\"", projectDirectory, baseFileName);
+		commandToRun += " && " + s;
+	}
+
+	sprintf(fileLocation, "%s%s.dri", get_project_path(), baseFileName);
+	if (FileExists(fileLocation))
+	{
+		sprintf(s, "rm -rf \"%s%s.dri\"", projectDirectory, baseFileName);
+		commandToRun += " && " + s;
+	}
+
+	//The new version of Eagle (v8/9) has a faster CAM processor. We call it with the CAM file and we get gerbers out.
+	sprintf(s, " && echo Running New CAM Processor on %s", baseFileName);
+	commandToRun += s;
+
+	//1,217 seconds to complete CAM using old method
+	//42 seconds to CAM the BlackBoard panel (8.8 x 7.2" with massive amounts of intense silkscreen artifacts)
+	//28 times faster!
+
+	//Run CAM file from EagleCon
+
+	//Find the user's directory containing the SparkFun CAM files
+	string pathToCAMs = "";
+	for (int x = 0; x < 20; x++)
+	{
+		string thisDirectory = path_cam[x];
+		if (strlen(thisDirectory) == 0)
+		{
+			dlgMessageBox("Could not find the sfe-gerb* CAM files. Have you loaded the SparkFun_Eagle_Settings folders into the EAGLE 'Directories' menu correctly?");
+			exit(-1);
+		}
+
+		sprintf(fileLocation, "%s/sfe-gerb274*.cam", thisDirectory);
+		if (FileExists(fileLocation))
+		{
+			pathToCAMs = thisDirectory;
+			break;
+		}
+	}
+
+	string camFileLocation = pathToCAMs + "/sfe-gerb274x-2layer.cam"; //You must have the SparkFun CAM files in the CAM directory setting so that Eagle can find this file
+
+	if (hasSixLayers() == 1)
+		camFileLocation = pathToCAMs + "/sfe-gerb274x-6layer.cam"; //You must have the SparkFun CAM files in the CAM directory setting so that Eagle can find this file
+	else if (hasFourLayers() == 1)
+		camFileLocation = pathToCAMs + "/sfe-gerb274x-4layer.cam"; //You must have the SparkFun CAM files in the CAM directory setting so that Eagle can find this file
+
+	sprintf(fileLocation, "%s%s.brd", get_project_path(), baseFileName);
+
+	sprintf(s, " \"%s/eagle\" -X -dCAMJOB -j\"%s\" -o\"%s\" \"%s\"",
+			EAGLE_DIR,
+			camFileLocation,
+			get_project_path(),
+			fileLocation);
+
+	commandToRun += " && " + s;
+
+	//This is the old way of generating gerbers. It works, but it's very slow.
+	/*
+	//Generate Gerbers
+	string fileExtension = "";
+	string layerNumbers = "";
+	string device = "";
+	string mirror = "";
+	for (int x = 0; x < 12; x++)
+	{
+		if (x == 0) //Top copper
+		{
+			if (outputGerbers == 0)
+				continue;
+			fileExtension = "GTL";
+			layerNumbers = "1 17 18";
+			commandToRun += " && echo Running Top Copper";
+		}
+		else if (x == 1) //Top silk
+		{
+			if (outputGerbers == 0)
+				continue;
+			fileExtension = "GTO";
+			layerNumbers = "21";
+			commandToRun += " && echo Running Top Silk";
+		}
+		else if (x == 2) //Top mask
+		{
+			if (outputGerbers == 0)
+				continue;
+			fileExtension = "GTS";
+			layerNumbers = "29";
+			commandToRun += " && echo Running Top Mask";
+		}
+		else if (x == 3) //Bottom copper
+		{
+			if (outputGerbers == 0)
+				continue;
+			fileExtension = "GBL";
+			layerNumbers = "16 17 18";
+			commandToRun += " && echo Running Bottom Copper";
+		}
+		else if (x == 4) //Bottom silk
+		{
+			if (outputGerbers == 0)
+				continue;
+			fileExtension = "GBO";
+			layerNumbers = "22";
+			commandToRun += " && echo Running Bottom Silk";
+		}
+		else if (x == 5) //Bottom mask
+		{
+			if (outputGerbers == 0)
+				continue;
+			fileExtension = "GBS";
+			layerNumbers = "30";
+			commandToRun += " && echo Running Bottom Mask";
+		}
+		else if (x == 6) //Outline/keepout
+		{
+			if (outputGerbers == 0)
+				continue;
+			fileExtension = "GKO";
+			layerNumbers = "20 46"; //Turn on dimension and milling (contains v-score indicators) layers
+			commandToRun += " && echo Running Board Outline";
+		}
+		else if (x == 7) //Top paste
+		{
+			if (outputTopStencil == 0)
+				continue;
+			fileExtension = "GTP";
+			layerNumbers = "31";
+			commandToRun += " && echo Running Top Paste";
+		}
+		else if (x == 8) //Bottom paste
+		{
+			if (outputBottomStencil == 0)
+				continue;
+			if (hasBottomParts() == 0)
+				continue;
+			fileExtension = "GBP";
+			layerNumbers = "32";
+			commandToRun += " && echo Running Bottom Paste";
+		}
+		else if (x == 9) //Drill file
+		{
+			if (outputGerbers == 0)
+				continue;
+			fileExtension = "TXT";
+			layerNumbers = "44 45";
+			commandToRun += " && echo Running Drill File";
+		}
+		else if (x == 10) //Inner layer 2
+		{
+			if (outputGerbers == 0)
+				continue;
+			if (hasFourLayers() == 0)
+				continue;
+			fileExtension = "GL2";
+			layerNumbers = "2 17 18";
+			commandToRun += " && echo Running Layer 2";
+		}
+		else if (x == 11) //Inner layer 15
+		{
+			if (outputGerbers == 0)
+				continue;
+			if (hasFourLayers() == 0)
+				continue;
+			fileExtension = "GL3";
+			layerNumbers = "15 17 18";
+			commandToRun += " && echo Running Layer 15";
+		}
+
+		//Deal with special layers
+		device = "GERBER_RS274X";
+		if (x == 9)
+			device = "EXCELLON_24"; //Drill file
+
+		mirror = "-m-"; //No mirror
+		//if(x == 8) mirror = "-m+"; //Mirror the bottom paste layer
+
+		//Add this CAM operation to the list
+		sprintf(s, " \"%s/eagle\" -X -N- %s -f+ -O+ -c+ -x0 -y0 -d%s -o \"%s.%s\" \"%s\" %s",
+				EAGLE_DIR,
+				mirror,
+				device,
+				baseFileName,
+				fileExtension,
+				projectDirectory + baseFileName + ".brd",
+				layerNumbers);
+
+		commandToRun += " && " + s;
+	}*/
+
+	//Zip files using 7za (7za.exe should be located in same directory as ULP)
+	if (zipOutput == 1)
+	{
+		string sevenZaLocation = convertForwardToBackSlashes(filedir(argv[0]));
+		sevenZaLocation += "\\7za.exe";
+
+		string outputFileName = projectDirectory + baseFileName + ".zip";
+
+		//Get all the wanted files
+		string fileList = "";
+		fileList += "\"" + projectDirectory + baseFileName + ".GTL" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GTO" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GTS" + "\"";
+
+		fileList += " \"" + projectDirectory + baseFileName + ".GBL" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GBO" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GBS" + "\"";
+
+		if (hasSixLayers() == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GL2" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL3" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL4" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL5" + "\"";
+		}
+		else if (hasFourLayers() == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GL2" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL3" + "\"";
+		}
+
+		fileList += " \"" + projectDirectory + baseFileName + ".GKO" + "\"";
+
+		fileList += " \"" + projectDirectory + baseFileName + ".TXT" + "\""; //Get drill file
+
+		fileList += " \"" + projectDirectory + "ordering_instructions.txt" + "\""; //Send the ordering instructions as an extra precaution
+
+		if (outputTopStencil == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GTP" + "\"";
+		}
+		if (outputBottomStencil == 1 && hasBottomParts() == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GBP" + "\"";
+		}
+
+		sprintf(s, "\"%s\" a \"%s\" %s",
+				sevenZaLocation,
+				outputFileName,
+				fileList);
+
+		commandToRun += " && " + s;
+	}
+
+	if (runGerbV == 1)
+	{
+		string gerbVLocation = convertForwardToBackSlashes(filedir(argv[0]));
+		gerbVLocation += "\\gerbv.exe";
+
+		//Get all the wanted files
+		string fileList = "";
+		fileList += "\"" + projectDirectory + baseFileName + ".GTL" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GTO" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GTS" + "\"";
+
+		fileList += " \"" + projectDirectory + baseFileName + ".GBL" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GBO" + "\"";
+		fileList += " \"" + projectDirectory + baseFileName + ".GBS" + "\"";
+
+		if (hasSixLayers() == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GL2" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL3" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL4" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL5" + "\"";
+		}
+		else if (hasFourLayers() == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GL2" + "\"";
+			fileList += " \"" + projectDirectory + baseFileName + ".GL3" + "\"";
+		}
+
+		fileList += " \"" + projectDirectory + baseFileName + ".GKO" + "\"";
+
+		fileList += " \"" + projectDirectory + baseFileName + ".TXT" + "\""; //Get drill file
+
+		if (outputTopStencil == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GTP" + "\"";
+		}
+		if (outputBottomStencil == 1 && hasBottomParts() == 1)
+		{
+			fileList += " \"" + projectDirectory + baseFileName + ".GBP" + "\"";
+		}
+
+		sprintf(s, "\"%s\" %s",
+				gerbVLocation,
+				fileList);
+
+		commandToRun += " && " + s;
+	}
+
+	//dlgMessageBox(commandToRun);
+	if (system(commandToRun) != 0)
+	{
+		dlgMessageBox("Error: Command failed.", "OK");
+	}
+	else
+	{
+		dlgMessageBox("Gerber generation complete.");
+	}
+}
+
+if (board)
+{
+	configRead(); //Read any settings if available
+
+	//GUI
+	int dstatus = dlgDialog("Gerber Generation Options")
+	{
+
+		dlgHBoxLayout { dlgSpacing(300); }
+
+		if (hasSixLayers() == 1)
+		{
+			dlgHBoxLayout { dlgLabel("<font color=red>Note:</font> This is a six layer board\t"); }
+		}
+		else if (hasFourLayers() == 1)
+		{
+			dlgHBoxLayout { dlgLabel("<font color=red>Note:</font> This is a four layer board\t"); }
+		}
+		if (hasBottomParts() == 1)
+		{
+			dlgHBoxLayout
+			{
+				dlgLabel("<font color=red>Note:</font> This board has parts on bottom side: <br>" + bottomPackages);
+			}
+			outputBottomStencil = 1; //Persuade user to generate these gerbers
+		}
+		else
+		{
+			dlgHBoxLayout { dlgLabel("This board does not have parts on bottom side\t"); }
+			outputBottomStencil = 0;
+		}
+
+		dlgHBoxLayout { dlgLabel("\t"); }
+
+		dlgGroup("Output Files")
+		{
+			dlgHBoxLayout { dlgCheckBox("Gerbers", outputGerbers); }
+			dlgHBoxLayout { dlgCheckBox("Top Stencil", outputTopStencil); }
+			dlgHBoxLayout { dlgCheckBox("Bottom Stencil", outputBottomStencil); }
+			dlgHBoxLayout { dlgCheckBox("Zip Output Files", zipOutput); }
+		}
+
+		dlgHBoxLayout { dlgCheckBox("Run gerbV upon completion", runGerbV); }
+
+		dlgPushButton("+Generate")
+		{
+			configWrite(); //Record current settings
+
+			createGerbers(); //Generate gerbers for this BRD
+
+			//Preview in gerbV
+
+			dlgAccept(-1);
+		}
+
+		dlgStretch(1);
+	};
+
+	configWrite(); //Record current settings
+}
+else
+{
+	dlgMessageBox("Please run SparkFun CAMmer from a board.");
+	exit(1);
+}
