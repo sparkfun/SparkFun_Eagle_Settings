@@ -300,6 +300,32 @@ string getBoardThickness()
 	return ("1.6mm");
 }
 
+//Detect if board has Controlled Impedance
+//If the board contains the text "Controlled Impedance" the whole string is returned
+string getBoardImpedance()
+{
+	//Search the ordering instructions box
+	board(B)
+	{
+		B.texts(T)
+		{
+			if (containsString(T.value, "Controlled Impedance") == 1)
+			{
+				if (containsString(T.value, "JLC7628") == 1)
+				{
+					return ("JLC7628");
+				}
+				if (containsString(T.value, "JLC2313") == 1)
+				{
+					return ("JLC2313");
+				}
+			}
+		}
+	}
+
+	return ("");
+}
+
 //Detect copper weight (thickness).
 //If someone has put "2oz" in any of the text on the board then return "2oz" else return "1oz".
 string getCopperWeight()
@@ -1292,6 +1318,7 @@ void orderingInstructionsWrite()
 	string boardColor = getBoardColor();		 //Search board for aesthetics to determine soldermask color
 	string surfaceFinish = getSurfaceFinish();	 // Search board for surface finish
 	string copperWeight = getCopperWeight();	 // Search board for copper weight
+	string boardImpedance = getBoardImpedance(); //Search for 'Controlled Impedance' text
 
 	int pcsPerPanel = numberOfColumns * numberOfRows; //Total count per panel. Helps when figuring out the number of panels to order
 
@@ -1309,6 +1336,8 @@ void orderingInstructionsWrite()
 	{
 		printf("panel size, %.0fx%.0fmm\n", ceil(panelWidth), ceil(panelHeight));
 		printf("PCB thickness, %s\n", boardThickness);
+		if(strlen(boardImpedance) > 0) 
+			printf("Controlled Impedance, %s\n", boardImpedance);
 		printf("number of layers, %d\n", numberOfLayers);
 		printf("soldermask color, %s\n", boardColor);
 		printf("silkscreen color, %s\n", boardSilkColor);
