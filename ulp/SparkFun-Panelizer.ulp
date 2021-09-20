@@ -329,6 +329,59 @@ string getBoardImpedance()
 	return ("");
 }
 
+//Detect if board has a beveled card edge
+//Search for 'MicroMod' or 'Chamfered' or 'Beveled' text
+string getBoardBevel()
+{
+	int microModFound = 0;
+	int bevelTextFound = 0;
+
+	//Search the ordering instructions box
+	board(B)
+	{
+		B.texts(T)
+		{
+			if (containsString(T.value, "MicroMod") == 1)
+			{
+				bevelTextFound = 1;
+			}
+			if (containsString(T.value, "Beveled") == 1)
+			{
+				bevelTextFound = 1;
+			}
+		}
+	}
+
+	board(B)
+	{
+		B.elements(E)
+		{
+
+			if (containsString(E.package.name, "MicroMod") == 1) //Logo found
+			{
+				microModFound = 1;
+			}
+		}
+	}
+
+	if (microModFound == 1 && bevelTextFound == 1)
+	{
+		return ("Gold Fingers + 45° Finger Chamfered");
+	}
+
+	string warning = "Not sure if board has a beveled edge.";
+	if (microModFound == 1 && bevelTextFound == 0)
+		warning += " MicroMod found but no Instructions.";
+	if (microModFound == 0 && bevelTextFound == 1)
+		warning += " Bevel text found but no MicroMod.";
+
+	warning += " Marking as not beveled.";
+
+	dlgMessageBox(warning);
+	return ("");
+}
+
+
 //Detect copper weight (thickness).
 //If someone has put "2oz" in any of the text on the board then return "2oz" else return "1oz".
 string getCopperWeight()
@@ -1370,6 +1423,7 @@ void orderingInstructionsWrite()
 	string surfaceFinish = getSurfaceFinish();	 // Search board for surface finish
 	string copperWeight = getCopperWeight();	 // Search board for copper weight
 	string boardImpedance = getBoardImpedance(); //Search for 'Controlled Impedance' text
+	string boardBevel = getBoardBevel(); //Search for 'MicroMod' or 'Chamfered' or 'Beveled' text
 
 	int pcsPerPanel = numberOfColumns * numberOfRows; //Total count per panel. Helps when figuring out the number of panels to order
 
@@ -1387,9 +1441,11 @@ void orderingInstructionsWrite()
 	{
 		printf("panel size, %.0fx%.0fmm\n", ceil(panelWidth), ceil(panelHeight));
 		printf("PCB thickness, %s\n", boardThickness);
-		if(strlen(boardImpedance) > 0) 
-			printf("Controlled Impedance, %s\n", boardImpedance);
 		printf("number of layers, %d\n", numberOfLayers);
+		if(strlen(boardImpedance) > 0) 
+			printf("controlled impedance, %s\n", boardImpedance);
+		if(strlen(boardBevel) > 0) 
+			printf("bevel, %s\n", boardBevel);
 		printf("soldermask color, %s\n", boardColor);
 		printf("silkscreen color, %s\n", boardSilkColor);
 		printf("oz copper, %s\n", copperWeight);
