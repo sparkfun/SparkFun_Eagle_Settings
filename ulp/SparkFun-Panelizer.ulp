@@ -369,6 +369,8 @@ string getBoardBevel()
 		return ("Gold Fingers + 45° Finger Chamfered");
 	}
 
+	if (microModFound == 0 && bevelTextFound == 0)
+		return ("");
 	string warning = "Not sure if board has a beveled edge.";
 	if (microModFound == 1 && bevelTextFound == 0)
 		warning += " MicroMod found but no Instructions.";
