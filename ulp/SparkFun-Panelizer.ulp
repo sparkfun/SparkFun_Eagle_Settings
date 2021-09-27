@@ -599,6 +599,9 @@ void panelizer()
 		borderWidth = 0.25;
 
 	//Calculate the number of copies we need to achieve our min panel size
+	//string debugMessage = "";
+	//sprintf(debugMessage, "designWidth:%.4f, designHeight:%.4f, verticalGap:%.4f, borderWidth:%.4f, panelSizeX:%.4f, panelSizeY:%.4f", designWidth, designHeight, verticalGap, borderWidth, panelSizeX, panelSizeY);
+	//dlgMessageBox(debugMessage);
 	while ((numberOfColumns * (designWidth + verticalGap) + verticalGap) + (borderWidth * 2) < panelSizeX)
 		numberOfColumns++;
 	while ((numberOfRows * (designHeight + horizontalGap) + horizontalGap) + (borderWidth * 2) < panelSizeY)
@@ -1751,6 +1754,8 @@ else if (board)
 			if (panelUnits == 1) //User input mm
 			{
 				//Convert panel units from mm to inches
+				designWidth = convertMMToInches(designWidth);
+				designHeight = convertMMToInches(designHeight);
 				panelSizeX = convertMMToInches(panelSizeX);
 				panelSizeY = convertMMToInches(panelSizeY);
 				verticalGap = convertMMToInches(verticalGap);
