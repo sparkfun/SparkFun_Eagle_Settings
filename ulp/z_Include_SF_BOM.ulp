@@ -8,6 +8,7 @@ string master_prod_ids[];
 string master_package_names[];
 string master_values[];
 string master_names[];
+string master_pnp_names[];
 int master_quantities[];
 int master_status[];
 int master_matches_filters[];
@@ -34,8 +35,10 @@ int nonbom_index_map[];
 
 // Info for bom elements
 string bomlistarry[];
+string pnplistarry[];
 int bomSort = 0;
 int bomSelected = -1;
+int pnpSelected = -1;
 int bom_index_map[];
 
 // Info for filtered elements
@@ -69,6 +72,7 @@ string customFilterFile = "";
 // GUI Vars
 string prod_id_warning = "";
 string headerString = "Qty\tPROD_ID\tNames\tValue\tPackage";
+string pnpHeaderString = "Qty\tPROD_ID\tPart\tNames\tValue\tPackage";
 string sparkleBOM; // A string for sparkle output
 string numFilteredItems = "";
 string exportFilePath = "";
@@ -395,6 +399,7 @@ void initialGrouping()
 				master_package_names[numUniqueEntries] = E.package.name;
 				master_values[numUniqueEntries] = E.value;
 				master_names[numUniqueEntries] = E.name;
+				master_pnp_names[numUniqueEntries] = E.name;
 				master_quantities[numUniqueEntries] = 1;
 				master_status[numUniqueEntries] = getStatus(E); // Returns one of four categories, bom, nonbom, filtered, or nonhardware
 				master_matches_filters[numUniqueEntries] = matchesFilters(E);
@@ -407,6 +412,7 @@ void initialGrouping()
 				{
 					// Add quantity and additional name to that master item
 					master_names[index] += (", " + E.name);
+					master_pnp_names[index] += (" " + E.name);
 					master_quantities[index]++;
 				}
 			}
@@ -420,6 +426,7 @@ void categorizeElements()
 	for (int indk = 0; indk < bomCount; indk++)
 	{
 		bomlistarry[indk] = "";
+		pnplistarry[indk] = "";
 		bom_index_map[indk] = -1;
 	}
 	for (int indj = 0; indj < nonbomCount; indj++)
@@ -449,6 +456,8 @@ void categorizeElements()
 	{
 		string temp = "";
 		sprintf(temp, "%d\t%s\t%s\t%s\t%s", master_quantities[indi], master_prod_ids[indi], master_names[indi], master_values[indi], master_package_names[indi]);
+		string temp2 = "";
+		sprintf(temp2, "%d\t%s\t%s\t%s\t%s\t%s", master_quantities[indi], master_prod_ids[indi], pidFormat(master_prod_ids[indi]), master_pnp_names[indi], master_values[indi], master_package_names[indi]);
 
 		if (master_status[indi] == element_status_nonhardware)
 		{
@@ -459,6 +468,7 @@ void categorizeElements()
 		else if (master_status[indi] == element_status_bom)
 		{
 			bomlistarry[bomCount] = temp;
+			pnplistarry[bomCount] = temp2;
 			bom_index_map[bomCount] = indi;
 			bomCount++;
 		}
