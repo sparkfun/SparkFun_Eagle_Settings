@@ -12,10 +12,19 @@
 
 */
 
+// Modified October 2021, Paul Clark
+/*
+
+Modification goals:
+- Add Pick and Place Helper
+  * Provide a 'quick' way to highlight particular parts when hand-populating a board
+
+*/
+
 // Modified October 2018, Owen Lyke
 /*
 
-Modification goals: 
+Modification goals:
 - improve detection of false positives (a part that is on the board but doesn't exactly match a production part that can be used)
 	* previous method was to search the part name and make sure it included the value
 
@@ -30,7 +39,9 @@ Modification goals:
 
 #include "z_Include_SF_BOM.ulp"
 
-	if (schematic)
+string pnpString = "";
+
+if (schematic)
 {
 	exit("edit .brd; run " + ulpName);
 }
@@ -237,6 +248,7 @@ t- Items that have no PROD_ID, no contacts, and no holes are considered \"Non-Ha
 }
 }
 }
+
 dlgTabPage("Filter Settings")
 {
 	// Filter Modification
@@ -271,6 +283,7 @@ dlgTabPage("Filter Settings")
 		}
 	}
 }
+
 dlgTabPage("Sparkle Output")
 {
 	dlgLabel("*Reminder* Don't forget to add a PCB part to the BOM in Sparkle");
@@ -278,6 +291,27 @@ dlgTabPage("Sparkle Output")
 	dlgTextView(sparkleBOM);
 	dlgLabel("PROD_ID Status:");
 	dlgTextView(prod_id_warning);
+}
+
+dlgTabPage("Pick and Place Helper")
+{
+	dlgVBoxLayout{
+		// BOM items
+		dlgLabel("BOM Items");
+		dlgListView(pnpHeaderString, pnplistarry, pnpSelected, bomSort);
+		dlgPushButton("Show")
+		{
+			if (pnpSelected == -1)
+			{
+				pnpString = "";
+			}
+			else
+			{
+				pnpString = "show " + string(master_pnp_names[bom_index_map[pnpSelected]]);
+			}
+			dlgAccept();
+		};
+	};
 }
 }
 
@@ -296,7 +330,10 @@ dlgGridLayout
 }
 }
 ;
-exit(0);
+if (pnpString == "")
+	exit(0);
+else
+	exit(pnpString);
 }
 else
 {
