@@ -111,7 +111,6 @@ Assign AF9 'Label';
 Assign F12 'show';
 Assign AF12 'info';
 
-Grid Default;
 Change Width 0.008;
 
 #Menu Add Bus Change Copy Delete Display Gateswap Grid Group Invoke Junction \
