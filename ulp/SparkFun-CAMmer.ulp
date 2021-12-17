@@ -108,6 +108,17 @@ int hasFourLayers()
 					return (1);
 				}
 			}
+			S.polygons(P)
+			{
+				if (P.layer == 2)
+				{
+					return (1);
+				}
+				if (P.layer == 15)
+				{
+					return (1);
+				}
+			}			
 		}
 	}
 	return (0); //Nope
@@ -131,6 +142,17 @@ int hasSixLayers()
 					return (1);
 				}
 			}
+			S.polygons(P)
+			{
+				if (P.layer == 3)
+				{
+					return (1);
+				}
+				if (P.layer == 14)
+				{
+					return (1);
+				}
+			}					
 		}
 	}
 	return (0); //Nope
