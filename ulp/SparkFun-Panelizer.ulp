@@ -318,15 +318,31 @@ string getBoardThickness()
 			{
 				return ("1.6mm");
 			}
+			if (containsString(T.value, "Thickness: 0.8mm") == 1)
+			{
+				return ("0.8mm");
+			}
+			if (containsString(T.value, "Thickness: 1.0mm") == 1)
+			{
+				return ("1.0mm");
+			}
+			if (containsString(T.value, "Thickness: 1mm") == 1)
+			{
+				return ("1.0mm");
+			}
+			if (containsString(T.value, "Thickness: 1.6mm") == 1)
+			{
+				return ("1.6mm");
+			}
 		}
 	}
 
-	dlgMessageBox("Warning: Board thickness not found. Assuming 1.6mm");
+	dlgMessageBox("Warning: Board thickness not found. You may want to add one. Ex: 'Thickness: 1.6mm'. Assuming 1.6mm");
 	return ("1.6mm");
 }
 
 //Detect if board has Controlled Impedance
-//If the board contains the text "Controlled Impedance" the whole string is returned
+//We look for 'Controlled Impedance' or 'Stackup'
 string getBoardImpedance()
 {
 	//Search the ordering instructions box
@@ -345,8 +361,73 @@ string getBoardImpedance()
 					return ("JLC2313");
 				}
 			}
+			if (containsString(T.value, "Stackup") == 1)
+			{
+				if (containsString(T.value, "JLC7628") == 1)
+				{
+					return ("JLC7628");
+				}
+				if (containsString(T.value, "JLC2313") == 1)
+				{
+					return ("JLC2313");
+				}
+				if (containsString(T.value, "JLC3313") == 1)
+				{
+					return ("JLC3313");
+				}
+				if (containsString(T.value, "JLC1080") == 1)
+				{
+					return ("JLC1080");
+				}
+			}
 		}
 	}
+
+	int numberOfLayers = 2;
+	if (hasFourLayers() == 1)
+		numberOfLayers = 4;
+
+	if (hasSixLayers() == 1)
+		numberOfLayers = 6;
+
+	if(numberOfLayers > 2)
+		dlgMessageBox("Warning: Board stackup and impedance recommendation not found. You should probably add one. Ex: 'Stackup: JLC7628'");
+
+	return ("");
+}
+
+//Detect if board has a defined material type
+//We look for 'Material' or 'Material Type'
+string getBoardMaterial()
+{
+	//Search the ordering instructions box
+	board(B)
+	{
+		B.texts(T)
+		{
+			if (containsString(T.value, "Material") == 1)
+			{
+				if (containsString(T.value, "TG155") == 1)
+				{
+					return ("TG155");
+				}
+				if (containsString(T.value, "TG170") == 1)
+				{
+					return ("TG170");
+				}
+			}
+		}
+	}
+
+	int numberOfLayers = 2;
+	if (hasFourLayers() == 1)
+		numberOfLayers = 4;
+
+	if (hasSixLayers() == 1)
+		numberOfLayers = 6;
+
+	if(numberOfLayers > 2)
+		dlgMessageBox("Warning: Board material not found. You may want to define one. Ex: 'Material: TG155'");
 
 	return ("");
 }
@@ -458,6 +539,26 @@ string getBoardColor()
 				{
 					return ("Purple");
 				}
+				if (containsString(T.value, "Red") == 1)
+				{
+					return ("Red");
+				}
+				if (containsString(T.value, "Green") == 1)
+				{
+					return ("Green");
+				}
+				if (containsString(T.value, "White") == 1)
+				{
+					return ("White");
+				}
+				if (containsString(T.value, "Yellow") == 1)
+				{
+					return ("Yellow");
+				}
+				if (containsString(T.value, "Blue") == 1)
+				{
+					return ("Blue");
+				}
 			}
 		}
 	}
@@ -518,7 +619,7 @@ string getBoardColor()
 	if (sparkxFound == 0 && sparkfunFound == 0 && lilypadFound == 0 && spectacleFound == 0)
 		warning += " No logos found.";
 
-	warning += " Marking as unknown.";
+	warning += " Marking as unknown. Use 'Solder Mask: Purple' to define it.";
 
 	dlgMessageBox(warning);
 	return ("Unknown");
@@ -1455,6 +1556,7 @@ void orderingInstructionsWrite()
 	string copperWeight = getCopperWeight();	 // Search board for copper weight
 	string boardImpedance = getBoardImpedance(); //Search for 'Controlled Impedance' text
 	string boardBevel = getBoardBevel(); //Search for 'MicroMod' or 'Chamfered' or 'Beveled' text
+	string boardMaterial = getBoardMaterial(); //Search for 'Material'
 
 	int pcsPerPanel = numberOfColumns * numberOfRows; //Total count per panel. Helps when figuring out the number of panels to order
 
@@ -1477,6 +1579,8 @@ void orderingInstructionsWrite()
 			printf("controlled impedance, %s\n", boardImpedance);
 		if(strlen(boardBevel) > 0) 
 			printf("bevel, %s\n", boardBevel);
+		if(strlen(boardMaterial) > 0) 
+			printf("material, %s\n", boardMaterial);
 		printf("soldermask color, %s\n", boardColor);
 		printf("silkscreen color, %s\n", boardSilkColor);
 		printf("oz copper, %s\n", copperWeight);
