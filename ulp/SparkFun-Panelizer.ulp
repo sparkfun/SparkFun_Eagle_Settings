@@ -337,7 +337,7 @@ string getBoardThickness()
 		}
 	}
 
-	dlgMessageBox("Warning: Board thickness not found. You may want to add one. Ex: 'Thickness: 1.6mm'. Assuming 1.6mm");
+	dlgMessageBox("Warning: Board thickness not found. You may want to add one. Use 'Thickness: 1.6mm' to define it. Assuming 1.6mm");
 	return ("1.6mm");
 }
 
@@ -391,7 +391,7 @@ string getBoardImpedance()
 		numberOfLayers = 6;
 
 	if(numberOfLayers > 2)
-		dlgMessageBox("Warning: Board stackup and impedance recommendation not found. You should probably add one. Ex: 'Stackup: JLC7628'");
+		dlgMessageBox("Warning: Board stackup and impedance recommendation not found. You should probably add one. Use 'Stackup: JLC7628' to define it.");
 
 	return ("");
 }
@@ -427,7 +427,7 @@ string getBoardMaterial()
 		numberOfLayers = 6;
 
 	if(numberOfLayers > 2)
-		dlgMessageBox("Warning: Board material not found. You may want to define one. Ex: 'Material: TG155'");
+		dlgMessageBox("Warning: Board material not found. You may want to define one. Use 'Material: TG155' to define it.");
 
 	return ("");
 }
@@ -654,7 +654,7 @@ string getSurfaceFinish()
 	}
 
 	//string warning = "Not sure what board finish to use. Defaulting to HASL lead free.";
-	//dlgMessageBox(warning);
+	dlgMessageBox("Warning: Not sure what board finish to use. Defaulting to HASL lead free. Use 'Finish: HASL Lead Free' to define it.");
 	return ("HASL lead free");
 }
 
