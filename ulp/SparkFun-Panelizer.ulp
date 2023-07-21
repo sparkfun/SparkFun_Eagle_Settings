@@ -33,6 +33,7 @@ int generateBottomStencil = 0;
 int panelUnits = 0;						//Default to inches
 int panelMustBeLargerThanDimension = 0; //Default to 'must be less than'
 int leftRightFiducials = 0;				// Move panel fiducials to the left and right sides (instead of top and bottom)
+int continuousBorder = 0;               // Define the border as one piece, instead of four pieces
 int removeRightmostVerticalGap = 0;     // Remove the far right virtcal gap and use a V-score in stead (adds strength to panel if gap is not needed)
 
 //Get the name of this brd (no extension, no directory)
@@ -74,6 +75,7 @@ void configWrite()
 		printf("%d\n", exposeCardEdge);
 		printf("%d\n", leftRightFiducials);
 		printf("%d\n", removeRightmostVerticalGap);
+		printf("%d\n", continuousBorder);
 	}
 }
 
@@ -104,6 +106,7 @@ void configRead()
 			exposeCardEdge = strtol(data[11]);
 			leftRightFiducials = strtol(data[12]);
 			removeRightmostVerticalGap = strtol(data[13]);
+			continuousBorder = strtol(data[14]);
 		}
 	}
 }
@@ -1018,7 +1021,7 @@ void panelizer()
 		}
 	}
 
-	//Add borders to four sides
+	//Add borders to four sides - or as one piece if continuousBorder is 1
 	if (drawPanelBorders == 1)
 	{
 		bigScript += "LAYER 20;\n"; //Dimension layer
@@ -1036,14 +1039,29 @@ void panelizer()
 
 		if (exposeCardEdge == 0)
 		{
-			//Don't expose the card edge. Draw the lower border
-			sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
-					lowerXleft, lowerYupper,
-					lowerXright, lowerYupper,
-					lowerXright, lowerYlower,
-					lowerXleft, lowerYlower,
-					lowerXleft, lowerYupper);
-			bigScript += s;
+			if (continuousBorder == 0)
+			{
+				//Don't expose the card edge. Draw the lower border
+				sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
+						lowerXleft, lowerYupper,
+						lowerXright, lowerYupper,
+						lowerXright, lowerYlower,
+						lowerXleft, lowerYlower,
+						lowerXleft, lowerYupper);
+				bigScript += s;
+			}
+			else
+			{
+				//Don't expose the card edge. Draw the lower border
+				sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f);\n",
+						lowerXleft, lowerYlower,
+						lowerXright, lowerYlower);
+				bigScript += s;
+				sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f);\n",
+						lowerXleft + borderWidth, lowerYupper,
+						lowerXright - borderWidth, lowerYupper);
+				bigScript += s;
+			}
 		}
 
 		//Draw right box
@@ -1060,13 +1078,31 @@ void panelizer()
 
 		real rightYlower = 0 - horizontalGap + 0.02;
 
-		sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
-				rightXleft, rightYupper,
-				rightXright, rightYupper,
-				rightXright, rightYlower,
-				rightXleft, rightYlower,
-				rightXleft, rightYupper);
-		bigScript += s;
+
+		if ((continuousBorder == 0) || (exposeCardEdge == 1))
+		{
+			sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
+					rightXleft, rightYupper,
+					rightXright, rightYupper,
+					rightXright, rightYlower,
+					rightXleft, rightYlower,
+					rightXleft, rightYupper);
+			bigScript += s;
+		}
+		else
+		{
+			real vscore = 0.02;
+			//if (vScoreIndicators == 0)
+			//	vscore = 0.02;
+			sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f);\n",
+					rightXright, rightYupper + borderWidth + vscore,
+					rightXright, rightYlower - (borderWidth + vscore));
+			bigScript += s;
+			sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f);\n",
+					rightXleft, rightYupper + vscore,
+					rightXleft, rightYlower - vscore);
+			bigScript += s;
+		}
 
 		//Draw top box
 		real topXleft = 0 - verticalGap - borderWidth;
@@ -1081,14 +1117,29 @@ void panelizer()
 
 		if (exposeCardEdge == 0)
 		{
-			//Don't expose the card edge. Draw the upper border
-			sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
-					topXleft, topYupper,
-					topXright, topYupper,
-					topXright, topYlower,
-					topXleft, topYlower,
-					topXleft, topYupper);
-			bigScript += s;
+			if (continuousBorder == 0)
+			{
+				//Don't expose the card edge. Draw the upper border
+				sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
+						topXleft, topYupper,
+						topXright, topYupper,
+						topXright, topYlower,
+						topXleft, topYlower,
+						topXleft, topYupper);
+				bigScript += s;
+			}
+			else
+			{
+				//Don't expose the card edge. Draw the upper border
+				sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f);\n",
+						topXleft, topYupper,
+						topXright, topYupper);
+				bigScript += s;
+				sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f);\n",
+						topXleft + borderWidth, topYlower,
+						topXright - borderWidth, topYlower);
+				bigScript += s;
+			}
 		}
 
 		//Draw left box
@@ -1099,13 +1150,30 @@ void panelizer()
 		if (exposeCardEdge == 1)
 			leftYupper = panelHeight;
 
-		sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
-				leftXleft, leftYupper,
-				leftXright, leftYupper,
-				leftXright, leftYlower,
-				leftXleft, leftYlower,
-				leftXleft, leftYupper);
-		bigScript += s;
+		if ((continuousBorder == 0) || (exposeCardEdge == 1))
+		{
+			sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f) (%.4f %.4f);\n",
+					leftXleft, leftYupper,
+					leftXright, leftYupper,
+					leftXright, leftYlower,
+					leftXleft, leftYlower,
+					leftXleft, leftYupper);
+			bigScript += s;
+		}
+		else
+		{
+			real vscore = 0.02;
+			//if (vScoreIndicators == 0)
+			//	vscore = 0.0;
+			sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f);\n",
+					leftXleft, rightYupper + borderWidth + vscore,
+					leftXleft, rightYlower - (borderWidth + vscore));
+			bigScript += s;
+			sprintf(s, "WIRE 0.01 (%.4f %.4f) (%.4f %.4f);\n",
+					leftXright, rightYupper + vscore,
+					leftXright, rightYlower - vscore);
+			bigScript += s;
+		}
 
 		//Add three fiducials so that the panel cannot be reversed in the machine without CV noticing
 
@@ -1840,6 +1908,7 @@ else if (board)
 			dlgHBoxLayout { dlgCheckBox("Add Panel Borders and Fiducials", drawPanelBorders); }
 			dlgHBoxLayout { dlgCheckBox("Expose Bottom/Card Edge", exposeCardEdge); }
 			dlgHBoxLayout { dlgCheckBox("Add V-score Lines and Text", vScoreIndicators); }
+			dlgHBoxLayout { dlgCheckBox("Continuous Border", continuousBorder); }
 			dlgHBoxLayout { dlgCheckBox("Move Panel Fiducials to Left+Right Edges", leftRightFiducials); }
 		}
 
